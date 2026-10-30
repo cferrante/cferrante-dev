@@ -42,7 +42,7 @@ marked 🧑 need you (accounts, payments, decisions); everything else I can driv
 | 🧑 [D2] notification channel | 8.4 | open |
 | 🧑 [D3] migrations tool | 9.1 | open |
 | 🧑 [D4] thought stream on fallback | 5.2 | proposed: narration only |
-| 🧑 Doc-link checker in CI? | 0.2 | proposed: yes |
+| 🧑 Doc-link checker in CI? | 0.2 | ✅ yes (done) |
 | 🧑 JS test runner for the frontend (no npm toolchain) | 4.2 | proposed: Deno (single binary); alternative: Node's built-in `node --test` |
 | 🧑 Groq account + API key (free) | 1.5 | not started |
 | 🧑 Neon account (free) | 9.1 | not started |
@@ -58,6 +58,9 @@ download; stop if under 5 GB free.
 ---
 
 ## Phase 0 — Foundations (no cloud, $0)
+
+**✅ Done 2026-10-30** (PRs #4, #5, #7). `main` is protected: **Test** and **Doc links** must pass,
+including for admins; no force pushes or deletions.
 
 | Step | Test that must fail first | Done when |
 |---|---|---|
@@ -187,7 +190,10 @@ Any change from this plan: what changed, why, and which step.
 
 | Date | Step | Deviation | Reason |
 |---|---|---|---|
-| — | — | none yet | — |
+| 2026-10-30 | 0.1 | Makefile skips Go steps until the first package exists | `go test ./...` and `go vet ./...` exit 1 on a module with no packages, which would fail CI for the wrong reason |
+| 2026-10-30 | 0.1 | `.gitignore` gained `!.env.example` | Verification with `git check-ignore` showed `.env.*` also hid the committable template |
+| 2026-10-30 | 0.2, 0.3 | "CI fails first" proven with throwaway draft PRs (#6 broken link, #8 failing test), closed afterwards | Keeps deliberately broken commits out of `main`'s history; force-pushing them away is blocked |
+| 2026-10-30 | 0.3 | Required checks also apply to admins (`enforce_admins: true`) | Otherwise admin merges (including mine via your token) would silently bypass CI. Can be relaxed in repo settings in an emergency |
 
 ## Code review log
 
@@ -195,7 +201,7 @@ Outcome of each review: finding, decision (fixed / won't fix / deferred), and wh
 
 | Date | Step / PR | Finding | Outcome |
 |---|---|---|---|
-| — | — | none yet | — |
+| 2026-10-30 | Phase 0 (#4, #5, #7) | No formal review run: config and a shell script only. Self-check caught `.env.example` being ignored | Fixed in #4 |
 
 ## Spike findings
 
