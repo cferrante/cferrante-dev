@@ -164,7 +164,7 @@ int rag_search(const rag_index* idx,
   [BM25](concepts.md#bm25) postings (an [inverted index](concepts.md#inverted-index)), and
   per-chunk access bits. Chunk text and metadata live in a sidecar JSON loaded by Go.
 - **[Access bits](concepts.md#access-mask):** `0x1` public, `0x2` invitee. Public callers pass `0x1`; invitees `0x3`.
-- **Fusion:** [Reciprocal Rank Fusion](concepts.md#hybrid-search-and-rrf), `score = Σ 1/(60 + rank)` over the two result lists.
+- **Fusion:** [Reciprocal Rank Fusion](concepts.md#reciprocal-rank-fusion), `score = Σ 1/(60 + rank)` over the two result lists.
 - **Memory ownership:** the caller allocates `out`; the engine never returns heap memory to Go,
   so there is nothing for Go to free except the index.
 - **Thread safety:** `rag_search` is read-only and safe to call concurrently.
