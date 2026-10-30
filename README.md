@@ -71,7 +71,7 @@ flowchart LR
 
 | Layer | Tech | Responsibility |
 |---|---|---|
-| Frontend | HTML/CSS/JS, no framework; S3 + CloudFront | Split-pane UI, SSE client |
+| Frontend | HTML/JS, no framework; **Tailwind CSS v4** (standalone CLI); S3 + CloudFront | Split-pane UI, SSE client |
 | Orchestrator | **Go** on AWS Lambda (`provided.al2023`), response streaming | Agent loop, tool calls, authorization, timing, SSE |
 | Compute engine | **C++**, linked into Go via **cgo** | In-memory vector similarity + BM25 hybrid retrieval |
 | LLM framework | **langchaingo** | Groq (OpenAI-compatible API) and Ollama behind one interface |
@@ -92,6 +92,21 @@ flowchart LR
   moving parts than a separate gRPC service.
 - **Neon:** free tier, Postgres in the same AWS region, built-in connection pooling (Lambda opens
   many connections), scales to zero.
+- **Tailwind v4 standalone CLI:** a single binary with no Node toolchain. It generates only the
+  classes the pages actually use, so the CSS stays tiny (~10 KB gzipped). Design tokens (terminal
+  palette, mono font) live in one `@theme` block. Plain CSS would avoid the build step but gets
+  harder to keep consistent as the UI grows.
+
+### Frontend conventions
+
+- **Full class names only.** Tailwind finds classes by scanning source files, so a class built at
+  runtime (`` `bg-${status}-500` ``) silently produces no CSS. Use lookup maps of complete names.
+- **State in data attributes, appearance in CSS.** JS sets `data-state="active"`; Tailwind variants
+  (`data-[state=active]:…`) style it.
+- **One template per repeated element** (action card, chat line), so long class lists exist once.
+- **Respect reduced motion** with `motion-reduce:` variants on every animation.
+- **Never the Play CDN** (`cdn.tailwindcss.com`) in production: it compiles CSS in the browser on
+  every page load.
 
 ## Model routing
 
@@ -137,6 +152,7 @@ benchmarks.
 - **Pre-generated answers** for suggested questions (zero inference).
 - **Rewrite only when needed:** skip the extra LLM call on first messages.
 - **Sub-millisecond retrieval**, enforced by a benchmark test.
+- **CSS size budget:** the built stylesheet must stay under 15 KB gzipped, enforced in CI.
 
 ## Retrieval engine
 
@@ -209,6 +225,7 @@ Test-first throughout.
 | Go unit tests | `go test`, fake `Model` | every commit (CI) |
 | SSE contract tests | Go, recorded event streams | every commit (CI) |
 | Retrieval evals | Go, golden dataset | every commit (CI) |
+| CSS build checks | size budget (< 15 KB gzipped) + required classes present | every commit (CI) |
 | Answer + adversarial evals | Go harness against **Ollama** | locally / on demand ($0) |
 | Smoke tests on AWS | `curl` against the deployed URL | after deploy |
 
@@ -241,12 +258,15 @@ docs/           design spec, plan, decisions
 
 ## Local development (planned)
 
-Requires Go, a C++17 compiler, CMake, and [Ollama](https://ollama.com) running natively.
+Requires Go, a C++17 compiler, CMake, [Ollama](https://ollama.com) running natively, and the
+[Tailwind CSS standalone CLI](https://tailwindcss.com/docs/installation/tailwind-cli) (an exact
+pinned version, checksum-verified on download; ~100 MB).
 
 ```bash
 ollama serve                 # start Ollama (stop with Ctrl+C or `systemctl stop ollama`)
 ollama pull <small-model>    # a 3–4B model; check disk space first
-make test                    # C++ + Go tests
+make css                     # build web/ CSS with the Tailwind CLI
+make test                    # C++ + Go tests + CSS checks
 make dev                     # run orchestrator locally against Ollama
 ```
 
