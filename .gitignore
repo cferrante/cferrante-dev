@@ -1,1 +1,27 @@
+# JetBrains IDE settings (per developer)
 .idea/
+
+# Build output
+/bin/
+/dist/
+/build/
+*.zip
+
+# Go
+*.test
+*.out
+coverage.*
+
+# Generated CSS (built by `make css`)
+/web/dist/
+
+# OpenTofu
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+
+# Local secrets and environment
+.env
+.env.*
+!.env.example
