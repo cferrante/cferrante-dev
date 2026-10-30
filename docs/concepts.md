@@ -4,7 +4,7 @@ A plain-language guide to the ideas this project uses, with *why* each one matte
 by topic; terms are used in [design.md](design.md), [benchmarks.md](benchmarks.md) and the
 [README](../README.md).
 
-Every term is a heading, so it has a stable link: `concepts.md#term-name` (lowercase, spaces
+Every term is a heading, so it has a stable link: `concepts.md#<term-name>` (lowercase, spaces
 become hyphens, punctuation dropped). Keep headings to plain words so anchors stay predictable.
 
 ## Retrieval
