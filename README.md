@@ -1,7 +1,8 @@
 # ferrante-ltd.com — Agentic RAG Receptionist
 
 > **Status: planning.** Nothing below is built yet. This README is the north star. The design
-> spec is in [docs/design.md](docs/design.md), performance targets in
+> spec is in [docs/design.md](docs/design.md), the build order in [docs/plan.md](docs/plan.md),
+> performance targets in
 > [docs/benchmarks.md](docs/benchmarks.md), and every term is explained in
 > [docs/concepts.md](docs/concepts.md).
 
