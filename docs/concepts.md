@@ -25,7 +25,7 @@ documents, so the prompt contains only relevant text.
 A list of numbers (a vector, e.g. 512 of them) that represents a text's meaning. Texts with
 similar meaning get similar vectors, even if they use different words ("Go developer" ≈ "Golang
 engineer"). Produced by an embedding model. The question and the chunks must be embedded by the
-*same* model, or their vectors aren't comparable (design §4, [D1]).
+*same* model, or their vectors aren't comparable ([design §4](design.md#4-model-layer), [[D1]](design.md#d1-embedding-model)).
 
 ### Cosine similarity and dot product
 
@@ -48,7 +48,7 @@ makes [BM25](#bm25) fast because only chunks containing a query word are scored.
 
 Run vector search and [BM25](#bm25) separately, then merge the two ranked lists with **Reciprocal
 Rank Fusion**: each chunk scores `1/(60 + its rank)` in each list, summed. It needs no tuning and is
-robust, which is why it's the common default (design §5).
+robust, which is why it's the common default ([design §5](design.md#5-retrieval-engine-c)).
 
 ### Brute-force vs approximate search
 
@@ -88,7 +88,7 @@ the memory, faster to scan, with a small accuracy cost that must be measured.
 
 Go's mechanism for calling C (and C++ through a [C ABI](#c-abi)). Each call costs roughly 100 ns,
 which is negligible here, but it complicates builds (needs a C++ toolchain, and the binary must
-match the target system's C library; see the README's *Known risks*).
+match the target system's C library; see the README's [Known risks](../README.md#known-risks)).
 
 ### C ABI
 
@@ -113,7 +113,7 @@ at the cost of a wake-up delay.
 ### Percentiles
 
 **p50, p95, p99.** p95 = 95% of requests were at least this fast. Averages hide slow outliers;
-percentiles show what real visitors experience (benchmarks: *Methodology*).
+percentiles show what real visitors experience ([benchmarks: Methodology](benchmarks.md#methodology)).
 
 ## Language models
 
@@ -145,7 +145,7 @@ Sending tokens to the browser as they're generated instead of waiting for the wh
 
 **Server-Sent Events.** A simple standard for a server to push a stream of named events over one
 HTTP response. One-way (server → browser), plain text, works through CDNs. Simpler than WebSockets,
-which are two-way and need more infrastructure (design §3).
+which are two-way and need more infrastructure ([design §3](design.md#3-streaming-protocol-sse)).
 
 ### Reasoning models
 

@@ -20,7 +20,7 @@ How the time a visitor waits should break down. Targets are p50 / p95.
 | Rate limit (DynamoDB) | 5 ms | 15 ms | one conditional update |
 | Auth ([JWT](concepts.md#jwt) verify) | < 0.1 ms | < 0.1 ms | local signature check, cached keys |
 | Rewrite follow-up | 0 / 250 ms | 0 / 400 ms | skipped on first message |
-| [Embed](concepts.md#embedding) question | 40 ms | 90 ms | network call; see [D1] in design |
+| [Embed](concepts.md#embedding) question | 40 ms | 90 ms | network call; see [[D1]](design.md#d1-embedding-model) in design |
 | **Retrieval (C++)** | **0.3 ms** | **1 ms** | in-process, enforced in CI |
 | Inference TTFT | 250 ms | 600 ms | Groq, includes reasoning start |
 | **First visible thought** | **≤ 350 ms** | **≤ 800 ms** | what the visitor feels |
