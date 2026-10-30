@@ -5,7 +5,7 @@
 # skipped until the first package exists.
 GO_PKGS := $(shell go list ./... 2>/dev/null)
 
-.PHONY: help test lint fmt
+.PHONY: help test lint fmt docs-check
 
 help: ## List targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-8s %s\n", $$1, $$2}'
@@ -26,3 +26,6 @@ endif
 
 fmt: ## Format Go code in place
 	gofmt -w .
+
+docs-check: ## Check doc anchor links (HEAD must be pushed)
+	scripts/check-doc-links.sh
