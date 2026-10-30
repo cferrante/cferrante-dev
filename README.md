@@ -1,10 +1,12 @@
 # ferrante-ltd.com — Agentic RAG Receptionist
 
-> **Status: planning.** Nothing below is built yet. This README is the north star; the design
-> spec and step-by-step plan will live in [`docs/`](docs/).
+> **Status: planning.** Nothing below is built yet. This README is the north star. The design
+> spec is in [docs/design.md](docs/design.md), performance targets in
+> [docs/benchmarks.md](docs/benchmarks.md), and every term is explained in
+> [docs/concepts.md](docs/concepts.md).
 
 A fast, intelligent, transparent AI receptionist for my portfolio site. Visitors ask questions about
-me and my work; the receptionist answers from my own documents (RAG), cites its sources, can take
+me and my work; the receptionist answers from my own documents ([RAG](docs/concepts.md#rag)), cites its sources, can take
 actions through tools, and **shows its work**: you watch it think on the left and watch the backend
 act on the right, with real measured timings.
 
@@ -32,7 +34,7 @@ act on the right, with real measured timings.
 ```
 
 - **Left — Thought stream:** a terminal-style view of the model's reasoning and the agent's steps,
-  streamed in real time over **Server-Sent Events (SSE)**, followed by the answer with numbered
+  streamed in real time over **[Server-Sent Events (SSE)](docs/concepts.md#sse)**, followed by the answer with numbered
   citations.
 - **Right — Action cards:** one card per backend step (retrieval, each tool call, inference,
   judge). A card lights up the instant Go starts the step and shows its **measured** duration when
@@ -73,27 +75,27 @@ flowchart LR
 |---|---|---|
 | Frontend | HTML/JS, no framework; **Tailwind CSS v4** (standalone CLI); S3 + CloudFront | Split-pane UI, SSE client |
 | Orchestrator | **Go** on AWS Lambda (`provided.al2023`), response streaming | Agent loop, tool calls, authorization, timing, SSE |
-| Compute engine | **C++**, linked into Go via **cgo** | In-memory vector similarity + BM25 hybrid retrieval |
+| Compute engine | **C++**, linked into Go via **[cgo](docs/concepts.md#cgo)** | In-memory vector similarity + BM25 hybrid retrieval |
 | LLM framework | **langchaingo** | Groq (OpenAI-compatible API) and Ollama behind one interface |
 | Models | Groq **gpt-oss-120b** (answers), **gpt-oss-20b** (judge, rewrites); Bedrock Nova Lite fallback; Ollama locally | See [Model routing](#model-routing) |
 | Auth | Amazon Cognito (self-sign-up disabled) | Invitation-only features |
 | Rate limits | DynamoDB | Per-IP limits on the hot path, single-digit ms |
 | Database | **Neon** serverless Postgres (same AWS region as Lambda) | Conversation logs, analytics, invite records, eval results |
-| Infra | OpenTofu | Reproducible AWS setup |
+| Infra | [OpenTofu](docs/concepts.md#infrastructure-as-code) | Reproducible AWS setup |
 
 **Why these choices**
 - **The model is the speed lever, not the server.** Most of a response's time is spent generating
-  text. Groq's LPU hardware generates ~500–1,000 tokens/s, against ~50–150 tokens/s for typical
+  text. Groq's LPU hardware generates ~500–1,000 [tokens/s](docs/concepts.md#tokens-per-second), against ~50–150 tokens/s for typical
   hosted models, so a full answer arrives in under a second, and visible reasoning costs almost no
   extra time.
-- **Lambda + Go:** fast cold starts (~150–300 ms after idle, reduced by a scheduled keep-warm
+- **Lambda + Go:** fast [cold starts](docs/concepts.md#cold-start) (~150–300 ms after idle, reduced by a scheduled keep-warm
   ping), nothing bills while idle, and response streaming carries SSE.
 - **C++ in-process via cgo:** see [Retrieval engine](#retrieval-engine). No network hop, and fewer
   moving parts than a separate gRPC service.
-- **Neon:** free tier, Postgres in the same AWS region, built-in connection pooling (Lambda opens
-  many connections), scales to zero.
+- **Neon:** free tier, Postgres in the same AWS region, built-in [connection pooling](docs/concepts.md#connection-pooling)
+  (Lambda opens many connections), [scales to zero](docs/concepts.md#scale-to-zero).
 - **Tailwind v4 standalone CLI:** a single binary with no Node toolchain. It generates only the
-  classes the pages actually use, so the CSS stays tiny (~10 KB gzipped). Design tokens (terminal
+  classes the pages actually use, so the CSS stays tiny (~10 KB gzipped). [Design tokens](docs/concepts.md#design-tokens) (terminal
   palette, mono font) live in one `@theme` block. Plain CSS would avoid the build step but gets
   harder to keep consistent as the UI grows.
 
@@ -104,14 +106,14 @@ flowchart LR
 - **State in data attributes, appearance in CSS.** JS sets `data-state="active"`; Tailwind variants
   (`data-[state=active]:…`) style it.
 - **One template per repeated element** (action card, chat line), so long class lists exist once.
-- **Respect reduced motion** with `motion-reduce:` variants on every animation.
+- **Respect [reduced motion](docs/concepts.md#reduced-motion)** with `motion-reduce:` variants on every animation.
 - **Never the Play CDN** (`cdn.tailwindcss.com`) in production: it compiles CSS in the browser on
   every page load.
 
 ## Model routing
 
 Every model sits behind one small Go `Model` interface, so providers are swappable by config and
-fallbacks are automatic.
+[fallbacks](docs/concepts.md#model-router-and-fallback) are automatic.
 
 | Job | Model | Why |
 |---|---|---|
@@ -129,42 +131,44 @@ benchmarks.
 
 ## Request lifecycle
 
-1. **Rate limit** check (DynamoDB) and **auth** check: the Cognito JWT is verified locally against
+1. **Rate limit** check (DynamoDB) and **auth** check: the Cognito [JWT](docs/concepts.md#jwt) is verified locally against
    cached public keys, and groups come from the token. No database call.
 2. **Suggested question?** Serve the stored, pre-verified answer. Done.
 3. **Rewrite** the question into a standalone one, *only* if there is chat history.
 4. **Embed** the question.
 5. **Retrieve** with the C++ engine: hybrid vector + BM25, then filter by the caller's access level.
 6. **Generate** with streaming reasoning and tool calls; tool calls are authorized in Go.
-7. **Judge** groundedness in parallel with the end of streaming; publish the verdict.
+7. **Judge** [groundedness](docs/concepts.md#groundedness) in parallel with the end of streaming; publish the verdict.
 8. **After the response:** write the conversation and timings to Postgres. Never on the hot path.
 
 ## Performance
 
-- **Database off the hot path.** Nothing a visitor waits for touches Postgres, so Neon's
+- **Database off the [hot path](docs/concepts.md#hot-path).** Nothing a visitor waits for touches Postgres, so Neon's
   scale-to-zero resume (a few hundred ms) is never visible.
-- **Prompt order for caching:** system prompt → tool definitions → *cache point* → retrieved
+- **Prompt order for [caching](docs/concepts.md#prompt-caching):** system prompt → tool definitions → *cache point* → retrieved
   chunks → conversation → question. Static content first, so the provider can reuse it. Cache
   hits are reported on the inference card and asserted in tests.
-- **Constrained JSON** for tool arguments and the judge verdict (JSON schema / grammar-constrained
+- **[Constrained JSON](docs/concepts.md#structured-output)** for tool arguments and the judge verdict (JSON schema / grammar-constrained
   output). Go still validates every result against the schema, because a grammar guarantees valid
   JSON, not correct values.
 - **Pre-generated answers** for suggested questions (zero inference).
 - **Rewrite only when needed:** skip the extra LLM call on first messages.
 - **Sub-millisecond retrieval**, enforced by a benchmark test.
-- **CSS size budget:** the built stylesheet must stay under 15 KB gzipped, enforced in CI.
+- **CSS size [budget](docs/concepts.md#performance-budget):** the built stylesheet must stay under 15 KB gzipped, enforced in CI.
 
 ## Retrieval engine
 
 The corpus is small (≈1–2k chunks), so the fastest *correct* method is **exact brute-force
-search**. Approximate indexes (HNSW) only pay off at ~100k+ vectors and give up some accuracy.
+search**. [Approximate indexes (HNSW)](docs/concepts.md#brute-force-vs-approximate-search) only pay off at ~100k+ vectors and give up some accuracy.
 
-- Vectors normalized at build time, so cosine similarity is a dot product.
-- SIMD (AVX2/FMA on x86, NEON on ARM) and a compact layout (optionally int8) that stays in CPU
-  cache.
-- Partial top-k with a heap, not a full sort.
-- **BM25** over an inverted index catches exact terms vector search misses; the two result lists
-  are merged with **Reciprocal Rank Fusion**.
+- [Embeddings](docs/concepts.md#embedding) normalized at build time, so
+  [cosine similarity is a dot product](docs/concepts.md#cosine-similarity-and-dot-product).
+- [SIMD](docs/concepts.md#simd) (AVX2/FMA on x86, NEON on ARM) and a compact layout (optionally
+  [int8](docs/concepts.md#quantization)) that stays in [CPU cache](docs/concepts.md#cpu-cache).
+- Partial [top-k](docs/concepts.md#top-k) with a heap, not a full sort.
+- **[BM25](docs/concepts.md#bm25)** over an [inverted index](docs/concepts.md#inverted-index)
+  catches exact terms vector search misses; the two result lists are merged with
+  **[Reciprocal Rank Fusion](docs/concepts.md#hybrid-search-and-rrf)**.
 - **Content at two levels:** a summary chunk per project plus detailed chunks. Broad questions hit
   summaries; specific ones hit details.
 - **A `faq/` corpus** of real questions with my own answers, the highest-quality source.
@@ -173,13 +177,13 @@ search**. Approximate indexes (HNSW) only pay off at ~100k+ vectors and give up 
 ## Invitation-only features
 
 Self-sign-up is disabled in Cognito; an invitation *is* an account I create. Invitees sign in with
-a one-time email code (no password). They unlock:
+a [one-time email code](docs/concepts.md#passwordless-sign-in) (no password). They unlock:
 
 - **Action tools**: e.g. request a meeting, send me a message.
 - **Private documents**: extra material retrieved only for authenticated users.
 
 Access is enforced **in Go code** on every tool call and retrieval, never by asking the model to
-behave. A jailbroken model still cannot call a tool the caller isn't authorized for.
+behave. A [jailbroken](docs/concepts.md#jailbreak) model still cannot call a tool the caller isn't authorized for.
 
 **Cognito vs Postgres:** Cognito is the authority on *who someone is* (identity, login, groups).
 Postgres holds records *about* invites: who invited them, a note, status. A Go CLI
@@ -188,21 +192,21 @@ Postgres invite without a real account.
 
 ## Evaluation and safety
 
-**Golden dataset**: questions with expected answers and expected source chunks, stored in
+**[Golden dataset](docs/concepts.md#golden-dataset)**: questions with expected answers and expected source chunks, stored in
 Postgres with every eval run's results so quality is tracked over time.
-- **Retrieval score:** does the right chunk appear in the top 5? Plain tests, no LLM needed.
+- **Retrieval score ([hit@5](docs/concepts.md#hit-at-k)):** does the right chunk appear in the top 5? Plain tests, no LLM needed.
 - **Answer score:** an LLM judge compares answers to the expected answers.
 Scoring them separately shows whether a bad answer came from search or from the model.
 
-**Live judge**: a second model call checks each claim in the answer against the retrieved chunks
+**Live judge** ([LLM-as-judge](docs/concepts.md#llm-as-judge)): a second model call checks each claim in the answer against the retrieved chunks
 and returns `grounded`, `partially_grounded`, or `ungrounded` with the unsupported claims. Its
 output is constrained to that schema, so injected text can't make it say anything else.
 
-**Adversarial (red-team) suite**: a versioned corpus in [`evals/adversarial/`](evals/), each
+**Adversarial ([red-team](docs/concepts.md#red-teaming)) suite**: a versioned corpus in [`evals/adversarial/`](evals/), each
 attack with an expected safe outcome:
 - direct jailbreaks and role-play escapes
 - system-prompt extraction
-- indirect prompt injection hidden in retrieved documents
+- indirect [prompt injection](docs/concepts.md#prompt-injection) hidden in retrieved documents
 - tool abuse: anonymous users trying to trigger invite-only tools
 - private-document leakage to anonymous users
 - stored injection: text planted in conversations must never reach retrieval
@@ -212,7 +216,7 @@ attack with an expected safe outcome:
 
 - A notice by the chat box: conversations are logged to improve answers.
 - Logs reference the Cognito user ID, never email.
-- Messages older than 90 days are deleted automatically.
+- Messages older than 90 days are [deleted automatically](docs/concepts.md#data-retention).
 - Logs are **never** fed back into retrieval.
 
 ## Testing strategy

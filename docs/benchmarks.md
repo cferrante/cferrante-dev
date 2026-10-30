@@ -18,9 +18,9 @@ How the time a visitor waits should break down. Targets are p50 / p95.
 | Step | Target p50 | Target p95 | Notes |
 |---|---|---|---|
 | Rate limit (DynamoDB) | 5 ms | 15 ms | one conditional update |
-| Auth (JWT verify) | < 0.1 ms | < 0.1 ms | local signature check, cached keys |
+| Auth ([JWT](concepts.md#jwt) verify) | < 0.1 ms | < 0.1 ms | local signature check, cached keys |
 | Rewrite follow-up | 0 / 250 ms | 0 / 400 ms | skipped on first message |
-| Embed question | 40 ms | 90 ms | network call; see [D1] in design |
+| [Embed](concepts.md#embedding) question | 40 ms | 90 ms | network call; see [D1] in design |
 | **Retrieval (C++)** | **0.3 ms** | **1 ms** | in-process, enforced in CI |
 | Inference TTFT | 250 ms | 600 ms | Groq, includes reasoning start |
 | **First visible thought** | **≤ 350 ms** | **≤ 800 ms** | what the visitor feels |
@@ -28,21 +28,21 @@ How the time a visitor waits should break down. Targets are p50 / p95.
 | Judge verdict after answer | 300 ms | 700 ms | gpt-oss-20b |
 | Suggested question (pre-verified) | 30 ms | 80 ms | no inference |
 
-**Cold start** (first request after idle) adds init time: Go runtime + index load + secrets.
+**[Cold start](concepts.md#cold-start)** (first request after idle) adds init time: Go runtime + index load + secrets.
 Target **< 400 ms** added. A scheduled keep-warm ping makes this rare.
 
 ## Metric definitions
 
 | Metric | Definition |
 |---|---|
-| **TTFT** (time to first token) | Request sent to provider → first reasoning *or* text token received |
+| **[TTFT](concepts.md#ttft)** (time to first token) | Request sent to provider → first reasoning *or* text token received |
 | **First visible thought** | Server receives `POST /chat` → first `thought` event flushed |
-| **Tokens/s** | Output tokens ÷ (last token time − first token time). Excludes TTFT. |
+| **[Tokens/s](concepts.md#tokens-per-second)** | Output tokens ÷ (last token time − first token time). Excludes TTFT. |
 | **Full answer** | Request received → `token` stream ends |
 | **Retrieval latency** | Wall time of one `rag_search` call, measured in-process |
-| **cgo overhead** | Go→C round trip for an empty C function |
+| **[cgo](concepts.md#cgo) overhead** | Go→C round trip for an empty C function |
 | **Cold start** | Lambda `Init Duration` from the REPORT log line |
-| **Cache hit** | Provider-reported cached input tokens > 0 |
+| **Cache hit** | Provider-reported cached input tokens > 0 ([prompt caching](concepts.md#prompt-caching)) |
 
 All server-side timings use Go's monotonic clock (`time.Since`) and are the same numbers shown on
 the action cards and stored in the `steps` table, so the UI, the database and this file can never
@@ -50,7 +50,7 @@ disagree.
 
 ## Methodology
 
-- **Percentiles, not averages.** Report p50, p95 and p99. A mean hides the slow requests people
+- **[Percentiles](concepts.md#percentiles), not averages.** Report p50, p95 and p99. A mean hides the slow requests people
   actually notice.
 - **Warm-up first.** Discard the first 10 iterations (caches, CPU frequency scaling, JIT in the
   providers).
@@ -70,10 +70,10 @@ disagree.
 | C++ retrieval scaling (1k → 50k chunks) | nanobench | `make bench-engine-scale` | none (informational) |
 | cgo round-trip overhead | `go test -bench` | `make bench-cgo` | none |
 | Go hybrid path (embed stubbed) | `go test -bench` | `make bench-orchestrator` | none |
-| SSE end-to-end, fake model | Go test client | `make bench-sse` | first event < 20 ms |
+| [SSE](concepts.md#sse) end-to-end, fake model | Go test client | `make bench-sse` | first event < 20 ms |
 | Provider TTFT and tokens/s | Go harness, real APIs | `make bench-models` | none (costs tokens) |
 | Deployed end-to-end | Go harness against the live URL | `make bench-live` | none |
-| CSS size | `gzip -c \| wc -c` | `make css-check` | < 15 KB |
+| CSS size ([budget](concepts.md#performance-budget)) | `gzip -c \| wc -c` | `make css-check` | < 15 KB |
 
 `bench-models` and `bench-live` spend free-tier quota, so they run on demand, never in CI.
 
@@ -101,8 +101,10 @@ disagree.
 
 1. Is C++ actually faster than plain Go for this search, and by how much? (Benchmark a pure-Go
    baseline too; if C++ isn't clearly faster, say so.)
-2. At what corpus size does brute force stop meeting the 1 ms target?
-3. Does int8 quantization change the search results? (Measure retrieval hit@5 alongside speed.)
-4. x86 (AVX2) vs ARM Graviton (NEON) on Lambda: speed and cost.
-5. How much does prompt caching cut TTFT in practice?
+2. At what corpus size does [brute force](concepts.md#brute-force-vs-approximate-search) stop
+   meeting the 1 ms target?
+3. Does [int8 quantization](concepts.md#quantization) change the search results? (Measure
+   retrieval [hit@5](concepts.md#hit-at-k) alongside speed.)
+4. x86 ([AVX2](concepts.md#simd)) vs ARM Graviton (NEON) on Lambda: speed and cost.
+5. How much does [prompt caching](concepts.md#prompt-caching) cut TTFT in practice?
 6. How often does the Groq free tier push requests to the Bedrock fallback?
