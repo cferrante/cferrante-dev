@@ -292,7 +292,7 @@ Both are JSON Lines (one JSON object per line), readable with Go's standard libr
 
 ```json
 {"id":"g-001","question":"What Go projects has he built?","caller":"anonymous",
- "expected_chunks":["proj-ferrante-ltd#summary"],
+ "expected_chunks":["proj-cferrante-dev#summary"],
  "expected_answer":"Mentions this receptionist's Go orchestrator ...",
  "tags":["projects","go"]}
 ```
