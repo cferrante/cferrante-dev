@@ -2,7 +2,8 @@
 
 > **Status: draft.** Defines the contracts between components so each can be built and tested on
 > its own. The [README](../README.md) says *what* and *why*; this says *exactly how the pieces
-> fit*. Open questions are marked **[D#]** and collected at the end. Terms are explained in
+> fit*. Open questions are marked **[D#]** and collected in
+> [§12](#12-open-decisions). Terms are explained in
 > [concepts.md](concepts.md); performance targets live in [benchmarks.md](benchmarks.md).
 
 ## 1. Scope
@@ -12,7 +13,7 @@ stream and action cards; suggested questions with pre-verified answers; invite-o
 private documents; live judge; golden-dataset and adversarial evals; conversation logging.
 
 **Not in scope (v1):** multi-language support; voice; file uploads from visitors; real calendar
-booking (v1 *records* meeting requests, see §6); an admin dashboard (analytics via SQL first).
+booking (v1 *records* meeting requests, see [§6](#6-tools-and-authorization)); an admin dashboard (analytics via SQL first).
 
 ## 2. Components and boundaries
 
@@ -132,7 +133,7 @@ providers mid-answer would produce a stitched, incoherent reply, so after the fi
 error is reported, not hidden. The action card shows `status: fallback` and the provider used.
 
 **[Embeddings](concepts.md#embedding)** are a separate interface: `Embed(ctx, texts []string) ([][]float32, error)`. Groq
-does not offer embeddings. **[D1]** Proposed: Bedrock Titan Text Embeddings v2 at 512 dimensions
+does not offer embeddings. **[[D1]](#d1-embedding-model)** Proposed: Bedrock Titan Text Embeddings v2 at 512 dimensions
 in production and Ollama `nomic-embed-text` locally. The index and the query must use the *same*
 embedding model, so local and production indexes are built separately.
 
@@ -174,8 +175,8 @@ int rag_search(const rag_index* idx,
 |---|---|---|---|
 | `get_contact_options` | everyone | none | static config |
 | `check_availability` | invitee | none | static config (weekly hours) |
-| `request_meeting` | invitee | records a request, emails me | Postgres + email **[D2]** |
-| `send_message` | invitee | records a message, emails me | Postgres + email **[D2]** |
+| `request_meeting` | invitee | records a request, emails me | Postgres + email **[[D2]](#d2-notification-channel)** |
+| `send_message` | invitee | records a message, emails me | Postgres + email **[[D2]](#d2-notification-channel)** |
 
 Two layers of [authorization](concepts.md#authentication-vs-authorization)
 ([defense in depth](concepts.md#defense-in-depth)):
@@ -272,7 +273,7 @@ create table eval_results (
   component.)
 - **[Retention](concepts.md#data-retention):** a daily scheduled job deletes `messages` older than 90 days.
 - **[Migrations](concepts.md#migrations):** plain numbered SQL files in `orchestrator/migrations/`, applied by a small Go
-  command. **[D3]** (or a tool such as `goose`, which adds a dependency).
+  command. **[[D3]](#d3-migrations-tool)** (or a tool such as `goose`, which adds a dependency).
 - The [golden dataset](concepts.md#golden-dataset) itself lives in git (`evals/golden/`), so it is reviewed like code; only
   *results* go to Postgres.
 
@@ -321,13 +322,29 @@ Categories: `jailbreak`, `roleplay_escape`, `prompt_extraction`, `indirect_injec
 
 ## 12. Open decisions
 
-- **[D1]** Embedding model: Bedrock Titan v2 (network call, ~pennies/year) vs in-process C++
-  embedding (MiniLM: no network hop, larger Lambda package and slower [cold start](concepts.md#cold-start)). Start with
-  Titan, measure, revisit.
-- **[D2]** Notification channel for `request_meeting` / `send_message`: Amazon SES (check
-  free-tier terms) or a push service.
-- **[D3]** Migrations: hand-rolled Go runner vs `goose`.
-- **[D4]** Thought stream content when the fallback model has no visible reasoning: show agent
-  narration only (proposed).
-- Carried from README: final models (from evals), Cognito passwordless free-tier check, prompt
-  caching support per provider, Groq limits and data-use terms.
+### D1. Embedding model
+
+Bedrock Titan v2 (network call, ~pennies/year) vs in-process C++ embedding (MiniLM: no network
+hop, larger Lambda package and slower [cold start](concepts.md#cold-start)). Proposed: start with
+Titan, measure, revisit. Used in [§4](#4-model-layer).
+
+### D2. Notification channel
+
+How `request_meeting` / `send_message` reach me: Amazon SES (check free-tier terms) or a push
+service. Used in [§6](#6-tools-and-authorization).
+
+### D3. Migrations tool
+
+Hand-rolled Go runner vs `goose` (adds a dependency). Used in
+[§8](#8-data-model-neon-postgres).
+
+### D4. Thought stream fallback
+
+What the thought stream shows when the fallback model has no visible reasoning. Proposed: agent
+narration only. Relates to [§3](#3-streaming-protocol-sse) and [§4](#4-model-layer).
+
+### Carried from README
+
+Final models (from evals), Cognito passwordless free-tier check, prompt caching support per
+provider, Groq limits and data-use terms. See the README's
+[Open decisions](../README.md#open-decisions).
