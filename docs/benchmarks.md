@@ -1,6 +1,7 @@
 # Benchmarks
 
-> **Status: targets only. Nothing has been measured yet.** Every number in a *Results* table must
+> **Status: mostly targets.** The first measurements, from the Phase 1 spikes, are in
+> [Results](#results). Every number in a *Results* table must
 > come from a recorded run (command, git sha, machine, date). Targets are hypotheses to test,
 > not claims. See [design.md](design.md) for the components and [concepts.md](concepts.md) for the
 > terms.
@@ -23,7 +24,9 @@ How the time a visitor waits should break down. Targets are p50 / p95.
 | [Embed](concepts.md#embedding) question | 40 ms | 90 ms | network call; see [[D1]](design.md#d1-embedding-model) in design |
 | **Retrieval (C++)** | **0.3 ms** | **1 ms** | in-process, enforced in CI |
 | Inference TTFT | 250 ms | 600 ms | Groq, includes reasoning start |
-| **First visible thought** | **≤ 350 ms** | **≤ 800 ms** | what the visitor feels |
+| **First visible thought (server)** | **≤ 350 ms** | **≤ 800 ms** | sum of the steps above |
+| Platform overhead | 150 ms | 300 ms | browser ↔ CloudFront ↔ Lambda; not under our code's control |
+| **First visible thought (visitor)** | **≤ 500 ms** | **≤ 1 s** | what the visitor feels: server + platform overhead |
 | Full answer (~300 tokens) | 1.0 s | 2.0 s | ~500 tok/s on gpt-oss-120b |
 | Judge verdict after answer | 300 ms | 700 ms | gpt-oss-20b |
 | Suggested question (pre-verified) | 30 ms | 80 ms | no inference |
@@ -36,7 +39,9 @@ Target **< 400 ms** added. A scheduled keep-warm ping makes this rare.
 | Metric | Definition |
 |---|---|
 | **[TTFT](concepts.md#ttft)** (time to first token) | Request sent to provider → first reasoning *or* text token received |
-| **First visible thought** | Server receives `POST /chat` → first `thought` event flushed |
+| **First visible thought (server)** | Server receives `POST /chat` → first `thought` event flushed |
+| **First visible thought (visitor)** | Browser sends `POST /chat` → first `thought` event received by the page. Measured in the browser with `performance.now()` |
+| **Platform overhead** | Client sends a request → first byte of a response whose server-side work is ~0 ms. Network, CloudFront and the Lambda invoke; spikes measure it with `watch.sh` |
 | **[Tokens/s](concepts.md#tokens-per-second)** | Output tokens ÷ (last token time − first token time). Excludes TTFT. |
 | **Full answer** | Request received → `token` stream ends |
 | **Retrieval latency** | Wall time of one `rag_search` call, measured in-process |
@@ -89,7 +94,10 @@ disagree.
 
 | Date | Git sha | Memory | Arch | Benchmark | p50 | p95 | p99 | Notes |
 |---|---|---|---|---|---|---|---|---|
-| 2026-10-31 | spike 1.3 | 128 MB | x86_64 | First SSE event, Function URL `RESPONSE_STREAM`, warm | 110 ms | 132 ms | — | n = 10, client in WSL2 over home internet, includes SigV4 and network; spike code, not the orchestrator |
+| 2026-10-31 | spike 1.3 | 128 MB | x86_64 | Platform overhead, Function URL direct, warm | 110 ms | 132 ms | — | n = 10; first SSE event, client in WSL2 over home internet, includes SigV4; spike code, not the orchestrator |
+| 2026-10-31 | spike 1.4 | 128 MB | x86_64 | Platform overhead, through CloudFront + OAC, warm | 180 ms | — | — | n = 1 (POST with body hash); too few runs for p95 |
+| 2026-10-31 | spike 1.4 | 128 MB | x86_64 | First event through CloudFront, cold | 463 ms | — | — | n = 1, right after deploy; includes Lambda init and a new CloudFront connection |
+| 2026-10-31 | spike 1.3 | 128 MB | x86_64 | Cold start (`Init Duration`), Go runtime only | 68 ms | 72 ms | — | n = 6; no index load or secrets yet. 128 MB is Lambda's smallest CPU share; the orchestrator's memory size is chosen in Phase 7 |
 
 ### Model providers
 
