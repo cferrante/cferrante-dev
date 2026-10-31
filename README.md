@@ -288,7 +288,7 @@ make dev                     # run orchestrator locally against Ollama
 - ~~**cgo binary on Lambda without Docker**~~ **Retired (spike 1.2):** a fully static build runs on
   Lambda; linking only the C++ runtime statically still needed a newer glibc than Lambda has.
   See [design §5](docs/design.md#5-retrieval-engine-c).
-- **Go response streaming on Lambda:** confirm `aws-lambda-go` streaming with Function URLs + SSE
-  in the same spike.
+- ~~**Go response streaming on Lambda**~~ **Retired (spike 1.3):** `aws-lambda-go` streaming
+  through a Function URL delivers SSE events one by one.
 - **Free tiers change.** Groq, Neon and AWS free tiers can shrink; the `Model` interface and
   Bedrock fallback limit the blast radius for the LLM.

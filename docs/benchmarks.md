@@ -89,7 +89,7 @@ disagree.
 
 | Date | Git sha | Memory | Arch | Benchmark | p50 | p95 | p99 | Notes |
 |---|---|---|---|---|---|---|---|---|
-| — | — | — | — | — | — | — | — | not yet measured |
+| 2026-10-31 | spike 1.3 | 128 MB | x86_64 | First SSE event, Function URL `RESPONSE_STREAM`, warm | 110 ms | 132 ms | — | n = 10, client in WSL2 over home internet, includes SigV4 and network; spike code, not the orchestrator |
 
 ### Model providers
 
