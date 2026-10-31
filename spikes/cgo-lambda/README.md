@@ -22,7 +22,7 @@ the [plan](../../docs/plan.md#spike-findings) and [design §5](../../docs/design
 | Build | `check-glibc.sh` | On Lambda |
 |---|---|---|
 | `naive` | ✗ links `libstdc++.so.6` from GCC 15 | not deployed |
-| `static-libs` (`-static-libstdc++ -static-libgcc`) | ✗ needs `GLIBC_2.38` (`__isoc23_strtoul`, from Ubuntu's `libstdc++.a`) | `Runtime.ExitError`, exit status 1 |
+| `static-libs` (`-static-libstdc++ -static-libgcc`) | ✗ needs `_dl_find_object` (2.35, libgcc), `arc4random` (2.36) and `__isoc23_strtoul` (2.38, both libstdc++) | `Runtime.ExitError`; log: ``version `GLIBC_2.38' not found`` and ``version `GLIBC_2.36' not found`` |
 | `full-static` (`-static`, tags `netgo,osusergo`) | ✓ needs no system libraries | `{"sum":10,"libc":"2.43","os":"Amazon Linux 2023.12.20261021",…}` |
 
 `libc` reports 2.43 for the static build because it carries its own glibc.

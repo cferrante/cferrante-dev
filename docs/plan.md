@@ -212,12 +212,13 @@ Outcome of each review: finding, decision (fixed / won't fix / deferred), and wh
 | 2026-10-31 | 1.1 bootstrap scripts | `shellcheck`: `lib.sh` had no shell directive; `tr A-Z` ranges | Fixed |
 | 2026-10-31 | 1.2 spike | Self-found: my `#cgo LDFLAGS: -lstdc++` forced the shared C++ runtime and silently defeated `-static-libstdc++` (Go already links C++ packages with `g++`) | Fixed: line removed |
 | 2026-10-31 | 1.2 spike | The first Lambda failure's log line was lost to teardown; Lambda itself only reports `exit status 1` | Fixed: `deploy.sh` prints recent log lines when an invoke fails |
+| 2026-10-31 | 1.2 spike | Lambda's log also showed `GLIBC_2.36' not found`: the checker listed symbols for the newest version only | Fixed: it lists every symbol over the limit; self-test now requires two versions to be named |
 
 ## Spike findings
 
 | Spike | Result | Evidence | Design impact |
 |---|---|---|---|
-| 1.2 cgo on Lambda | ✅ **Fully static works; the planned `-static-libstdc++` fix does not.** Naive build links GCC 15's `libstdc++.so.6`; static C++ runtime still needs `GLIBC_2.38` (`__isoc23_strtoul` inside Ubuntu's `libstdc++.a`); fully static passes. Zig not needed. x86_64 only (arm64 not attempted) | Lambda invoke (2026-10-31): static-libs build → `Runtime.ExitError`, as the checker predicted; full-static → `{"sum":10,"os":"Amazon Linux 2023…"}`. [Spike README](../spikes/cgo-lambda/README.md) | Lambda builds are fully static with `netgo,osusergo`; `check-glibc.sh` gates every release build ([design §5](design.md#5-retrieval-engine-c)) |
+| 1.2 cgo on Lambda | ✅ **Fully static works; the planned `-static-libstdc++` fix does not.** Naive build links GCC 15's `libstdc++.so.6`; static C++ runtime still needs glibc 2.35–2.38 (`_dl_find_object`, `arc4random`, `__isoc23_strtoul` inside Ubuntu's `libgcc`/`libstdc++.a`); fully static passes. Zig not needed. x86_64 only (arm64 not attempted) | Lambda invoke (2026-10-31): static-libs build → `Runtime.ExitError`, log ``version `GLIBC_2.38' not found``, as the checker predicted; full-static → `{"sum":10,"os":"Amazon Linux 2023…"}`. [Spike README](../spikes/cgo-lambda/README.md) | Lambda builds are fully static with `netgo,osusergo`; `check-glibc.sh` gates every release build ([design §5](design.md#5-retrieval-engine-c)) |
 | 1.3 Go SSE streaming | pending | — | — |
 | 1.4 CloudFront passthrough | pending | — | — |
 | 1.5 Groq from Lambda | pending | — | — |
