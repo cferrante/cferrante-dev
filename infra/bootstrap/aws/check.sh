@@ -34,6 +34,7 @@ if ! aws --profile "$PROJECT_PROFILE" sts get-caller-identity >/dev/null 2>&1; t
   todo "03 profile $PROJECT_PROFILE missing or not logged in (aws sso login --profile $PROJECT_PROFILE)"
   todo "04 budget (needs the profile)"
   todo "05 DNS (needs the profile)"
+  todo "06 Groq API key (needs the profile)"
   exit 0
 fi
 ok "03 profile $PROJECT_PROFILE works"
@@ -54,4 +55,13 @@ elif [[ "$(zone_ns "$zone")" == "$(domain_ns)" ]]; then
   ok "05 $DOMAIN is delegated to the project account's zone"
 else
   todo "05 $DOMAIN's name servers don't point at the project account's zone yet"
+fi
+
+# Metadata only: the value is never read here.
+if type=$(project ssm describe-parameters \
+    --parameter-filters "Key=Name,Values=$GROQ_KEY_PARAM" \
+    --query 'Parameters[0].Type' --output text 2>/dev/null) && [[ $type == SecureString ]]; then
+  ok "06 Groq API key stored encrypted at $GROQ_KEY_PARAM"
+else
+  todo "06 Groq API key at $GROQ_KEY_PARAM"
 fi
