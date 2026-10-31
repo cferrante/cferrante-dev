@@ -52,6 +52,7 @@ finished step prints ✓ "exists" and changes nothing.
 | `03-sso-access.sh` | Grants your user the permission set in the project account; writes the `PROJECT_PROFILE` CLI profile | management | $0 |
 | `04-budget.sh` | Monthly cost budget with alerts at 1% and 100% actual, 100% forecast | project | $0 (budgets without actions are free) |
 | `05-dns.sh` | Creates the domain's DNS zone in the project account and points the registration at it | both | $0.50/month |
+| `06-groq-key.sh` | Stores the Groq API key as an encrypted SSM SecureString, after checking it with Groq. Re-running offers to replace it | project | $0 (standard tier) |
 
 After `03-sso-access.sh`, sign in to the new profile once:
 
@@ -91,6 +92,7 @@ and delete it.
 | `no valid session for profile …` | `aws sso login --profile …` (sessions expire after a few hours) |
 | `Missing …/config.env` | `cp config.env.example config.env` and fill it in |
 | `No access` when signing in to the project profile | The new assignment takes a minute to apply; retry |
+| `Groq didn't accept the key (HTTP 401)` | The key is wrong or revoked; create a new one in the Groq console. Nothing was stored |
 | `account creation failed: EMAIL_ALREADY_EXISTS` | `PROJECT_ACCOUNT_EMAIL` belongs to another AWS account; use a different (plus) address |
 | `still in progress …; re-run this script later` | Re-run it: the script resumes rather than starting again |
 
@@ -98,9 +100,11 @@ and delete it.
 
 Nothing here deletes resources; do it in the console, in reverse order:
 
-1. **DNS:** point the domain back at a zone in the management account (Route 53 → Registered
+1. **Groq key:** `aws ssm delete-parameter --name /cferrante-dev/groq-api-key --profile <PROJECT_PROFILE>`,
+   and revoke the key in the Groq console.
+2. **DNS:** point the domain back at a zone in the management account (Route 53 → Registered
    domains → Edit name servers), then delete the project account's zone.
-2. **Budget:** Billing → Budgets in the project account.
-3. **Access:** IAM Identity Center → AWS accounts → remove the assignment; delete the profile
+3. **Budget:** Billing → Budgets in the project account.
+4. **Access:** IAM Identity Center → AWS accounts → remove the assignment; delete the profile
    from `~/.aws/config`.
-4. **Account:** Organizations → close the account. Closed accounts can be reopened for 90 days.
+5. **Account:** Organizations → close the account. Closed accounts can be reopened for 90 days.

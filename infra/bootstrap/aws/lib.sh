@@ -10,6 +10,9 @@ fi
 # shellcheck source=config.env.example
 source "$here/config.env"
 
+# Defaults for settings added after config.env was first written.
+GROQ_KEY_PARAM=${GROQ_KEY_PARAM:-/cferrante-dev/groq-api-key}
+
 ok()   { printf '  \033[32m✓\033[0m %s\n' "$*"; }
 todo() { printf '  \033[33m✗\033[0m %s\n' "$*"; }
 act()  { printf '  \033[36m→\033[0m %s\n' "$*"; }
