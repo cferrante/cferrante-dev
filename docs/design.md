@@ -35,6 +35,11 @@ Endpoint: `POST /chat` returns a [Server-Sent Events](concepts.md#sse) stream
 (`Content-Type: text/event-stream`). (A POST with an SSE response is
 read with `fetch()` + a stream reader in the browser, because `EventSource` only supports GET.)
 
+**Through CloudFront** (proven in spike 1.4): CloudFront's origin access control signs requests to
+the Function URL but not their bodies, so the browser sends the body's SHA-256 (hex, via
+`crypto.subtle.digest`) in an `x-amz-content-sha256` header; without it the request is refused.
+The distribution has caching and compression off, and forwards all viewer headers except `Host`.
+
 Request:
 
 ```json
