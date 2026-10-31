@@ -285,8 +285,9 @@ make dev                     # run orchestrator locally against Ollama
 
 ## Known risks
 
-- **cgo binary on Lambda without Docker:** Ubuntu 26.04's glibc is newer than Amazon Linux 2023's.
-  Plan: static linking or `zig cc`, proven by a hello-world spike before real work.
+- ~~**cgo binary on Lambda without Docker**~~ **Retired (spike 1.2):** a fully static build runs on
+  Lambda; linking only the C++ runtime statically still needed a newer glibc than Lambda has.
+  See [design §5](docs/design.md#5-retrieval-engine-c).
 - **Go response streaming on Lambda:** confirm `aws-lambda-go` streaming with Function URLs + SSE
   in the same spike.
 - **Free tiers change.** Groq, Neon and AWS free tiers can shrink; the `Model` interface and
