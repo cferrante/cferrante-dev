@@ -37,7 +37,7 @@ marked 🧑 need you (accounts, payments, decisions); everything else I can driv
 
 | Item | Needed by | Status |
 |---|---|---|
-| 🧑 Do you already own `ferrante-ltd.com`? (decides transfer vs register, ≈ $15/yr) | 7.2 | open |
+| 🧑 Site domain (decides transfer vs register, ≈ $15/yr) | 7.2 | ✅ `cferrante.dev` registered in Route 53 |
 | 🧑 [D1] embedding model | 5.3 | proposed: Titan v2 |
 | 🧑 [D2] notification channel | 8.4 | open |
 | 🧑 [D3] migrations tool | 9.1 | open |
@@ -148,7 +148,7 @@ Cost: Groq free tier; Bedrock and Titan in cents.
 | Step | Test that must fail first | Done when |
 |---|---|---|
 | **7.1** OpenTofu with S3 state backend; `tofu plan` in CI | `tofu validate` fails on empty config | Plan clean; state in S3 with locking |
-| **7.2** 🧑 Domain + Route 53 + ACM + S3 + CloudFront flat-rate Free plan | `curl -I https://ferrante-ltd.com` fails | HTTPS 200 with security headers; plan selection noted (may be console-only) |
+| **7.2** 🧑 Domain + Route 53 + ACM + S3 + CloudFront flat-rate Free plan | `curl -I https://cferrante.dev` fails | HTTPS 200 with security headers; plan selection noted (may be console-only) |
 | **7.3** Lambda + Function URL + origin access control, SSM secrets, DynamoDB rate limits, concurrency cap | Smoke test against deployed `/chat` fails | Streams through CloudFront; 11th anonymous message in 10 min is rate-limited |
 | **7.4** GitHub Actions deploy via **OIDC** (no stored AWS keys) | Deploy job fails without the role | Merge to `main` deploys; least-privilege role |
 | **7.5** Keep-warm schedule, CloudWatch alarms, budget alarm at $5 | — (ops config, verified by triggering alarms) | Alarm test emails received |
@@ -194,6 +194,7 @@ Any change from this plan: what changed, why, and which step.
 | 2026-10-30 | 0.1 | `.gitignore` gained `!.env.example` | Verification with `git check-ignore` showed `.env.*` also hid the committable template |
 | 2026-10-30 | 0.2, 0.3 | "CI fails first" proven with throwaway draft PRs (#6 broken link, #8 failing test), closed afterwards | Keeps deliberately broken commits out of `main`'s history; force-pushing them away is blocked |
 | 2026-10-30 | 0.3 | Required checks also apply to admins (`enforce_admins: true`) | Otherwise admin merges (including mine via your token) would silently bypass CI. Can be relaxed in repo settings in an emergency |
+| 2026-10-31 | 7.2 | Project renamed `cferrante-dev`; site domain is `cferrante.dev` instead of `ferrante-ltd.com` | The hyphenated `.com` was never owned; repo, Go module and domain now share one name |
 
 ## Code review log
 
