@@ -42,12 +42,13 @@ marked 🧑 need you (accounts, payments, decisions); everything else I can driv
 | 🧑 [D2] notification channel | 8.4 | open |
 | 🧑 [D3] migrations tool | 9.1 | open |
 | 🧑 [D4] thought stream on fallback | 5.2 | proposed: narration only |
+| 🧑 [D5] Lambda architecture | 7.6 | proposed: x86_64, revisited by measurement in 7.6 |
 | 🧑 Doc-link checker in CI? | 0.2 | ✅ yes (done) |
 | 🧑 JS test runner for the frontend (no npm toolchain) | 4.2 | proposed: Deno (single binary); alternative: Node's built-in `node --test` |
 | 🧑 Groq account + API key (free) | 1.5 | not started |
 | 🧑 Neon account (free) | 9.1 | not started |
 
-([D1]–[D4] are defined in [design §12](design.md#12-open-decisions).)
+([D1]–[D5] are defined in [design §12](design.md#12-open-decisions).)
 
 **Toolchain (checked 2026-10-30):** Go 1.27.1, g++ 15.2, CMake 4.2.3, Make 4.4.1, AWS CLI
 2.37.5, Ollama 0.33.3, gh 2.46.0 are installed (and `shellcheck` for `make lint`: `sudo apt install shellcheck`; CI runners have it). OpenTofu 1.13.1 (standalone binary, user-local). **Missing:** Tailwind standalone
@@ -91,6 +92,11 @@ before Phase 2. Cost: $0 (free tiers; spike resources torn down afterwards).
 
 Built with CMake, tested with doctest, benchmarked with nanobench. Everything here runs locally
 and in CI.
+
+**Portability rule:** no architecture-specific code (such as AVX2 intrinsics) without a portable
+fallback that is tested and benchmarked alongside it. The hot loops are written so the compiler
+can vectorize them on both x86_64 and arm64, keeping the Lambda architecture ([D5]) a build flag
+rather than a rewrite.
 
 | Step | Test that must fail first | Done when |
 |---|---|---|
@@ -152,6 +158,7 @@ Cost: Groq free tier; Bedrock and Titan in cents.
 | **7.3** Lambda + Function URL + origin access control, SSM secrets, DynamoDB rate limits, concurrency cap | Smoke test against deployed `/chat` fails | Streams through CloudFront; 11th anonymous message in 10 min is rate-limited |
 | **7.4** GitHub Actions deploy via **OIDC** (no stored AWS keys) | Deploy job fails without the role | Merge to `main` deploys; least-privilege role |
 | **7.5** Keep-warm schedule, CloudWatch alarms, budget alarm at $5 | — (ops config, verified by triggering alarms) | Alarm test emails received |
+| **7.6** arm64 comparison ([D5]): cross-build arm64 (fully static), CI job on GitHub's arm64 runners, deploy both architectures | Engine tests fail on the arm64 runner until the arm64 build exists | Engine latency, cold start and cost per 1k requests recorded for both in [benchmarks](benchmarks.md#aws-lambda); D5 decided from the numbers |
 
 Site stays private (unlisted, chat behind a temporary allow-list) until M5.
 
@@ -202,6 +209,7 @@ Any change from this plan: what changed, why, and which step.
 | 2026-10-31 | 1.2 | Spike C++ is compiled by cgo from source in the Go package, not built as a CMake static library | The glibc question is the same either way; CMake arrives with the real engine in Phase 2 |
 | 2026-10-31 | 1.3 | Function URL uses `AWS_IAM` auth and a SigV4-signed `curl`, not a public URL | No open endpoint even briefly; 1.4's CloudFront origin access control needs `AWS_IAM` anyway |
 | 2026-10-31 | 1.3 | Pass rule is "arrivals spread like the sends" (≥ 3/4 of the send span), not "each gap ≈ 200 ms" | Per-gap counting failed a working stream after two network hiccups; the spread rule still fails buffering |
+| 2026-10-31 | 2, 7.6 | Added the Phase 2 portability rule, step 7.6 and decision D5 (Lambda architecture) | arm64 is about 20% cheaper per GB-second; engine latency is far below what users notice, so the choice is made by measurement later, and portable SIMD keeps it open |
 
 ## Code review log
 
