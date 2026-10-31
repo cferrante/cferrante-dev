@@ -6,7 +6,7 @@ export AWS_REGION=${AWS_REGION:-us-east-1}
 fn=spike-cgo-lambda
 role=spike-cgo-lambda-role
 
-aws lambda delete-function --function-name "$fn" 2>/dev/null && echo "function deleted" || echo "function already gone"
+aws lambda delete-function --function-name "$fn" >/dev/null 2>&1 && echo "function deleted" || echo "function already gone"
 aws logs delete-log-group --log-group-name "/aws/lambda/$fn" 2>/dev/null && echo "logs deleted" || echo "logs already gone"
 aws iam detach-role-policy --role-name "$role" \
   --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole 2>/dev/null || true
