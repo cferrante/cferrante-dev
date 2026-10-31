@@ -170,6 +170,13 @@ int rag_search(const rag_index* idx,
   so there is nothing for Go to free except the index.
 - **Thread safety:** `rag_search` is read-only and safe to call concurrently.
 
+**Building for Lambda** (proven in spike 1.2): the Lambda binary is linked **fully static**
+(`-extldflags "-static"`, build tags `netgo,osusergo`), so it needs nothing from Amazon Linux
+2023's system libraries. Linking only the C++ runtime statically is not enough on Ubuntu 26.04:
+its `libstdc++.a` calls `__isoc23_strtoul`, which needs glibc 2.38, and Lambda has 2.34. Every
+release build must pass `check-glibc.sh` (from the spike) before deploy. Static glibc can't load
+NSS or `dlopen` modules; the engine uses neither, and Go's own resolver replaces glibc's DNS.
+
 ## 6. Tools and authorization
 
 | Tool | Who | Side effect | Backing store |
