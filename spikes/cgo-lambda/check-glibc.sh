@@ -23,10 +23,17 @@ for lib in $needed; do
   esac
 done
 
+# newer_than A B: true if version A is newer than version B.
+newer_than() { [[ $1 != "$2" && $(printf '%s\n%s\n' "$1" "$2" | sort -V | tail -1) == "$1" ]]; }
+
 newest=$(readelf -V -W "$bin" | grep -o 'GLIBC_[0-9][0-9.]*' | sed 's/^GLIBC_//' | sort -uV | tail -1)
-if [[ $(printf '%s\n%s\n' "$newest" "$max" | sort -V | tail -1) != "$max" ]]; then
-  echo "FAIL $bin: needs GLIBC_$newest, newer than $max. Symbols:"
-  objdump -T "$bin" | grep "GLIBC_$newest" | awk '{print "       " $NF}' | sort -u
+if newer_than "$newest" "$max"; then
+  echo "FAIL $bin: needs GLIBC_$newest, newer than $max. Symbols over the limit:"
+  # objdump -T lines end in "(GLIBC_x.y) symbol" or "GLIBC_x.y symbol".
+  objdump -T "$bin" | sed -n 's/.*[( ]GLIBC_\([0-9.]*\))\{0,1\} \{1,\}\([^ ]*\)$/\1 \2/p' | sort -u -V |
+    while read -r version symbol; do
+      if newer_than "$version" "$max"; then echo "       $symbol (GLIBC_$version)"; fi
+    done
   fail=1
 fi
 
