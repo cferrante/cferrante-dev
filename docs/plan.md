@@ -210,6 +210,7 @@ Any change from this plan: what changed, why, and which step.
 | 2026-10-31 | 1.3 | Function URL uses `AWS_IAM` auth and a SigV4-signed `curl`, not a public URL | No open endpoint even briefly; 1.4's CloudFront origin access control needs `AWS_IAM` anyway |
 | 2026-10-31 | 1.3 | Pass rule is "arrivals spread like the sends" (≥ 3/4 of the send span), not "each gap ≈ 200 ms" | Per-gap counting failed a working stream after two network hiccups; the spread rule still fails buffering |
 | 2026-10-31 | 1.4 | Also tested POST, with and without `x-amz-content-sha256` | `/chat` is a POST, and OAC for Lambda doesn't sign request bodies, so the browser must send the hash; worth proving before the frontend is designed |
+| 2026-10-31 | benchmarks | "First visible thought" split into server (≤ 350 ms) and visitor (≤ 500 ms) targets, with a platform-overhead row | Spikes 1.3–1.4 measured ≈ 110–180 ms between client and Lambda that the server-side budget left out, though the row claimed to be "what the visitor feels" |
 | 2026-10-31 | 2, 7.6 | Added the Phase 2 portability rule, step 7.6 and decision D5 (Lambda architecture) | arm64 is about 20% cheaper per GB-second; engine latency is far below what users notice, so the choice is made by measurement later, and portable SIMD keeps it open |
 
 ## Code review log
