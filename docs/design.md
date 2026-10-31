@@ -23,7 +23,8 @@ booking (v1 *records* meeting requests, see [§6](#6-tools-and-authorization)); 
 | `orchestrator/` (Go) | [agent loop](concepts.md#agent-loop), authorization, timing, [SSE](concepts.md#sse), tool execution, logging | engine ([cgo](concepts.md#cgo)), model providers, DynamoDB, Postgres |
 | `engine/` (C++) | index loading, hybrid search, access filtering | nothing (pure in-process compute) |
 | `evals/` (Go) | golden + adversarial runs, scoring | orchestrator packages, Ollama/Groq, Postgres |
-| `infra/` (OpenTofu) | all AWS resources | AWS |
+| `infra/` (OpenTofu) | all AWS resources inside the project account | AWS |
+| `infra/bootstrap/aws/` (shell) | the project account itself, sign-in, budget, DNS zone ([§13](#13-aws-accounts-and-dns)) | AWS Organizations, Identity Center, Budgets, Route 53 |
 
 Rule: **the engine has no I/O after load and no knowledge of users.** It receives an access mask
 and returns chunk ids. This keeps it trivially testable and fast.
@@ -348,3 +349,37 @@ narration only. Relates to [§3](#3-streaming-protocol-sse) and [§4](#4-model-l
 Final models (from evals), Cognito passwordless free-tier check, prompt caching support per
 provider, Groq limits and data-use terms. See the README's
 [Open decisions](../README.md#open-decisions).
+
+## 13. AWS accounts and DNS
+
+The project runs in its **own AWS account** (`cferrante-dev`), a member of an AWS Organization
+whose management account already exists and also holds unrelated resources.
+
+| | Management account | Project account |
+|---|---|---|
+| Holds | Organization, IAM Identity Center, consolidated billing, the `cferrante.dev` **registration** | Everything the site runs on, the `cferrante.dev` **DNS zone**, a $1/month budget |
+| Who uses it | Me, rarely | Me and CI (OpenTofu deploys via OIDC, plan step 7.4) |
+
+**Why a separate account:**
+- **Least privilege.** CI's deploy role lives in the project account and has no path into the
+  management account, which controls billing, sign-in and every other account.
+- **Smaller blast radius.** A bad deploy can't touch the other domains and resources in the
+  management account.
+- **Clean cost signal.** The project account's budget sees only this project's spend; a
+  tag-filtered budget would miss untagged costs such as DNS zones.
+- **Easy teardown.** Closing the account removes everything the project created.
+
+**Why the DNS zone is in the project account but the registration isn't:** OpenTofu has to
+create records (ACM certificate validation, the CloudFront alias) on every rebuild. With the
+zone alongside them, that needs no cross-account access. The registration only changes when the
+name servers change, so it stays where it was bought; moving it would gain nothing.
+
+**Trade-offs accepted:** free-tier allowances are shared across the organization; one extra
+`aws sso login` profile; the zone costs $0.50/month (the same as before, once the zone created
+at registration is deleted).
+
+The account, sign-in, budget and zone are created by idempotent scripts in
+[`infra/bootstrap/aws/`](../infra/bootstrap/aws/README.md), not by OpenTofu: OpenTofu needs
+the account to exist before it can run, and these rarely-changing resources are safer outside
+state it can destroy.
+

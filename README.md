@@ -257,7 +257,7 @@ orchestrator/   Go: Lambda handler, agent loop, tools, SSE, Model interface
 engine/         C++: retrieval engine + C ABI header for cgo
 corpus/         source documents, faq/, project summaries
 evals/          golden dataset, adversarial corpus, eval harness
-infra/          OpenTofu
+infra/          OpenTofu; bootstrap/aws/ sets up the AWS account first
 docs/           design spec, plan, decisions
 ```
 
