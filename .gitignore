@@ -29,3 +29,6 @@ coverage.*
 # AWS bootstrap settings (your account email and user names);
 # config.env.example is the committed template.
 /infra/bootstrap/aws/config.env
+
+# Spike build output
+/spikes/*/build/
