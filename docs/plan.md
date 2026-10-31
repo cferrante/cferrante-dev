@@ -50,7 +50,7 @@ marked 🧑 need you (accounts, payments, decisions); everything else I can driv
 ([D1]–[D4] are defined in [design §12](design.md#12-open-decisions).)
 
 **Toolchain (checked 2026-10-30):** Go 1.27.1, g++ 15.2, CMake 4.2.3, Make 4.4.1, AWS CLI
-2.37.5, Ollama 0.33.3, gh 2.46.0 are installed (and `shellcheck` for `make lint`: `sudo apt install shellcheck`; CI runners have it). **Missing:** OpenTofu (1.1), Tailwind standalone
+2.37.5, Ollama 0.33.3, gh 2.46.0 are installed (and `shellcheck` for `make lint`: `sudo apt install shellcheck`; CI runners have it). OpenTofu 1.13.1 (standalone binary, user-local). **Missing:** Tailwind standalone
 CLI (4.1), Zig (only if 1.2 needs it). Local glibc is **2.43**; Lambda's Amazon Linux 2023 has
 **2.34**, which is why step 1.2 exists. Disk is checked (`df -h /`) before every install or
 download; stop if under 5 GB free.
@@ -78,7 +78,7 @@ Spikes are **experiments**, on `spike/…` branches. Their code may be thrown aw
 
 | Step | Test that must fail first | Done when |
 |---|---|---|
-| **1.1** 🧑 AWS account setup: root MFA, IAM Identity Center admin user, `aws sso login`, separate project account with a **$1 Budget alarm** ([bootstrap scripts](../infra/bootstrap/aws/README.md)), region `us-east-1`; install OpenTofu | `aws sts get-caller-identity` fails (no session); `check.sh` shows ✗ | It returns the SSO admin identity; `check.sh` all ✓; budget alarm email confirmed. **AWS part ✅ 2026-10-31; OpenTofu install pending** |
+| **1.1** 🧑 AWS account setup: root MFA, IAM Identity Center admin user, `aws sso login`, separate project account with a **$1 Budget alarm** ([bootstrap scripts](../infra/bootstrap/aws/README.md)), region `us-east-1`; install OpenTofu | `aws sts get-caller-identity` fails (no session); `check.sh` shows ✗ | It returns the SSO admin identity; `check.sh` all ✓; budget alarm email confirmed. **✅ 2026-10-31** (OpenTofu 1.13.1, checksum-verified) |
 | **1.2** **cgo binary on Lambda.** C++ `add()` in a static lib, called from Go via cgo, built on Ubuntu with `-static-libstdc++ -static-libgcc`; deployed as `provided.al2023` | A local check that the binary's highest required `GLIBC_` symbol version is ≤ 2.34 fails on a naive build | That check passes, **and** a Lambda invoke returns the C++ result on x86_64 (and arm64 if time). If static flags can't get under 2.34, try `zig cc -target x86_64-linux-gnu.2.34` and record it |
 | **1.3** **Go response streaming → SSE.** Lambda Function URL in `RESPONSE_STREAM` mode emitting 10 SSE events 200 ms apart | Go unit test on the handler with a fake stream writer fails | `curl -N` shows events arriving **one by one** (timestamps 200 ms apart), not all at the end |
 | **1.4** **CloudFront passthrough.** CloudFront (with origin access control) in front of the 1.3 URL | Same `curl -N` timing test against the CloudFront URL | Events still arrive incrementally; direct Function URL access is refused |
