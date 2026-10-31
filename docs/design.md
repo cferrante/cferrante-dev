@@ -351,6 +351,13 @@ Hand-rolled Go runner vs `goose` (adds a dependency). Used in
 What the thought stream shows when the fallback model has no visible reasoning. Proposed: agent
 narration only. Relates to [§3](#3-streaming-protocol-sse) and [§4](#4-model-layer).
 
+### D5. Lambda architecture
+
+x86_64 or arm64 (Graviton2, about 20% cheaper per GB-second; both are inside the free tier).
+Proposed: x86_64, which builds and tests natively on the development machine and is proven by
+spikes 1.2–1.3. Revisited with measurements in plan step 7.6; the engine's portability rule
+(plan Phase 2) keeps switching cheap.
+
 ### Carried from README
 
 Final models (from evals), Cognito passwordless free-tier check, prompt caching support per
