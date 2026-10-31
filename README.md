@@ -244,7 +244,7 @@ Test-first throughout.
 | Neon Postgres (free: 0.5 GB, 100 compute-hours) | $0 |
 | Groq API key in SSM Parameter Store (standard) | $0 |
 | Bedrock fallback | cents, only when Groq is rate-limited |
-| Domain (`.com`) | ≈ $15/year |
+| Domain (`cferrante.dev`) | ≈ $15/year |
 
 Spend guards: per-IP rate limit, Lambda concurrency cap, max tokens per reply, and an AWS Budget
 alarm. *All prices and limits to be re-verified against official pages before deploy.*
