@@ -115,8 +115,8 @@ rather than a rewrite.
 | **3.1** SSE writer enforcing the [contract rules](design.md#3-streaming-protocol-sse) | Tests: unmatched `step_start`, event after `done`, missing keep-alive | All four contract rules enforced |
 | **3.2** `Model` interface, fake model, router with fallback-before-first-token | Test: primary returns 429 → fallback used; error *after* first token → error reported, no fallback | Both behaviours proven |
 | **3.3** Agent loop + tool executor with two-layer authorization and confirmation | Test: anonymous caller's forged `send_message` call is refused; unconfirmed side effect doesn't run | Refused with `authorized:false`; idempotency key de-duplicates |
-| **3.4** Indexer CLI: chunking (langchaingo text splitter), embedding via interface, writes index | Test on a fixture corpus: expected chunk ids and access bits | Index loads in the engine and finds known chunks |
-| **3.5** `make dev`: local HTTP server, SSE over Ollama (small 3–4B model; **disk check first**) | Smoke test: `curl -N localhost` gets `thought`, `token`, `done` in order | Works end to end on the laptop |
+| **3.4** Indexer CLI: chunking (our own splitter: paragraph, then sentence boundaries, with overlap), embedding via interface, writes index | Test on a fixture corpus: expected chunk ids, boundaries and access bits | Index loads in the engine and finds known chunks |
+| **3.5** `make dev`: local HTTP server, SSE over Ollama (small 3–4B model; **disk check first**) via the standard-library client | Recorded Ollama stream replay: reasoning and text arrive as separate events; smoke test: `curl -N localhost` gets `thought`, `token`, `done` in order | Works end to end on the laptop |
 
 ## Phase 4 — Frontend (M2, $0)
 
@@ -217,6 +217,7 @@ Any change from this plan: what changed, why, and which step.
 | 2026-11-01 | 1.5 | 1 warm-up and 20 runs, 10 s apart, not the methodology's 10 warm-ups and ≥ 50 requests | The step asks for 20 runs, and the gap keeps them inside Groq's free-tier limits; the row is labelled n = 20 |
 | 2026-11-01 | 1.5 | The key is stored by `infra/bootstrap/aws/06-groq-key.sh` (PRs #20, #21), not a spike script; spike teardown leaves it | One owner for the secret's lifecycle; Phase 5 reuses it |
 | 2026-11-01 | 1.5 | Tokens/s is measured on turn 2 only; turn 1's TTFT is the reported TTFT | Turn 1's output tokens include tool-call arguments that arrive in one chunk after the timed tokens; one run computed 939,006 tokens/s |
+| 2026-11-01 | 3.4, 3.5 | langchaingo dropped from the project: Ollama uses the same standard-library client as Groq, and chunking is our own splitter | After spike 1.5, langchaingo would only have served local development and a text splitter. One client for both OpenAI-compatible providers is less code than an adapter per provider, keeps 290 modules out, and puts the chunk boundaries the evals depend on under our own tests. Ollama's reasoning field is checked in 3.5 |
 
 ## Code review log
 
