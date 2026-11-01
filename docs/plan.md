@@ -122,13 +122,26 @@ and that is recorded as a deviation.
 
 ## Phase 3 — Orchestrator core, Go, fake model ($0)
 
+Everything runs against a fake model and fake retriever until 3.5, which uses Ollama on the
+laptop. Contracts: [design §3](design.md#3-streaming-protocol-sse) (stream, citations, turn
+limits, `confirm_request`), [§4](design.md#4-model-layer) (models, router), [§5](design.md#5-retrieval-engine-c)
+(corpus and indexer), [§6](design.md#6-tools-and-authorization) (caller, tools, pending actions)
+and [§8](design.md#8-data-model-neon-postgres) (conversation history).
+
+**Layout:** `orchestrator/{sse,model,model/fake,model/oai,agent,tools,corpus}` and
+`orchestrator/cmd/{indexer,dev}`. The HTTP handler is a plain `http.Handler`, so Phase 7 only
+wraps it for Lambda. No new Go dependencies.
+
 | Step | Test that must fail first | Done when |
 |---|---|---|
-| **3.1** SSE writer enforcing the [contract rules](design.md#3-streaming-protocol-sse) | Tests: unmatched `step_start`, event after `done`, missing keep-alive | All four contract rules enforced |
-| **3.2** `Model` interface, fake model, router with fallback-before-first-token | Test: primary returns 429 → fallback used; error *after* first token → error reported, no fallback | Both behaviours proven |
-| **3.3** Agent loop + tool executor with two-layer authorization and confirmation | Test: anonymous caller's forged `send_message` call is refused; unconfirmed side effect doesn't run | Refused with `authorized:false`; idempotency key de-duplicates |
-| **3.4** Indexer CLI: chunking (our own splitter: paragraph, then sentence boundaries, with overlap), embedding via interface, writes index | Test on a fixture corpus: expected chunk ids, boundaries and access bits | Index loads in the engine and finds known chunks |
-| **3.5** `make dev`: local HTTP server, SSE over Ollama (small 3–4B model; **disk check first**) via the standard-library client | Recorded Ollama stream replay: reasoning and text arrive as separate events; smoke test: `curl -N localhost` gets `thought`, `token`, `done` in order | Works end to end on the laptop |
+| **3.1** SSE writer enforcing the [contract rules](design.md#3-streaming-protocol-sse), with an injectable clock | Tests: unmatched `step_start`, event after `done`, missing keep-alive (fake clock), concurrent writers | All four contract rules enforced; `-race` clean with the keep-alive and the agent writing at once |
+| **3.2** `Model` interface, fake model, router with fallback-before-first-token and a 5 s first-token timeout | Test: primary returns 429 → fallback used; error *after* first token → error reported, no fallback; primary silent past the timeout → fallback | All three behaviours proven |
+| **3.3** The answer turn: `Retriever` interface (engine binding behind it), `ConversationStore` (in memory), prompt with numbered context, streaming, citations, turn limits | With fake model and retriever: events arrive as `step_start(retrieval)`, `step_end`, `thought`, `token`, `citation`, `done`; a `[2]` split across chunks yields one citation; an out-of-range `[9]` yields none; a cancelled turn still closes every step | The full turn works against fakes |
+| **3.4** Indexer CLI: corpus front matter, chunking (our own splitter: headings, paragraphs, then sentence boundaries, with overlap), embedding via interface (fake embedder in tests), index + sidecar written atomically | Test on a fixture corpus: expected chunk ids, boundaries and access bits; a missing `access` key is an error; a failed write leaves no file | Index loads in the engine and finds known chunks. Decide the deferred Unicode-space tokenizer question against real corpus text |
+| **3.5** `make dev`: local HTTP server, SSE over Ollama via `model/oai` (the spike 1.5 client, moved and shared with Groq); a small reasoning model such as `qwen3:4b` (~2.6 GB) and `nomic-embed-text` (~0.3 GB); **disk check first** | Recorded Ollama stream replay: reasoning and text arrive as separate events; smoke test: `curl -N localhost` gets `thought`, `token`, `done` in order | Works end to end on the laptop, with click-through steps |
+| **3.6** Tools: filtering, executor enforcement, confirmation through pending actions (`PendingActions`, in memory) | Test: an anonymous caller's forged `send_message` is refused; an unconfirmed action doesn't run; another caller's or an expired `action_id` is refused; a second confirm runs nothing | Refused with `authorized:false`; each action runs at most once |
+
+Cost: $0. The only downloads are the two Ollama models in 3.5 (≈ 2.9 GB; RAM is 15 GB).
 
 ## Phase 4 — Frontend (M2, $0)
 
@@ -167,7 +180,7 @@ Cost: Groq free tier; Bedrock and Titan in cents.
 |---|---|---|
 | **7.1** OpenTofu with S3 state backend; `tofu plan` in CI | `tofu validate` fails on empty config | Plan clean; state in S3 with locking |
 | **7.2** 🧑 Domain + Route 53 + ACM + S3 + CloudFront flat-rate Free plan | `curl -I https://cferrante.dev` fails | HTTPS 200 with security headers; plan selection noted (may be console-only) |
-| **7.3** Lambda + Function URL + origin access control, SSM secrets, DynamoDB rate limits, concurrency cap | Smoke test against deployed `/chat` fails | Streams through CloudFront; 11th anonymous message in 10 min is rate-limited |
+| **7.3** Lambda + Function URL + origin access control, SSM secrets, DynamoDB rate limits, concurrency cap | Smoke test against deployed `/chat` fails | Streams through CloudFront; 11th anonymous message in 10 min is rate-limited; rate-limit and pending-action DynamoDB latency from Lambda recorded in [benchmarks](benchmarks.md#aws-lambda) against the 5 ms p50 / 15 ms p95 budget |
 | **7.4** GitHub Actions deploy via **OIDC** (no stored AWS keys) | Deploy job fails without the role | Merge to `main` deploys; least-privilege role |
 | **7.5** Keep-warm schedule, CloudWatch alarms, budget alarm at $5 | — (ops config, verified by triggering alarms) | Alarm test emails received |
 | **7.6** arm64 comparison ([D5]): cross-build arm64 (fully static), CI job on GitHub's arm64 runners, deploy both architectures | Engine tests fail on the arm64 runner until the arm64 build exists | Engine latency, cold start and cost per 1k requests recorded for both in [benchmarks](benchmarks.md#aws-lambda); D5 decided from the numbers |
@@ -247,6 +260,12 @@ Any change from this plan: what changed, why, and which step.
 | 2026-11-01 | 2.7 | Go package is named `rag` (directory `engine/go`), and the C ABI gained `rag_index_dim()`; [design §5](design.md#5-retrieval-engine-c) updated | `go` is a keyword, so it can't be a package name. Go needed the index's dimension, and reading it from the file header would have given the format a second owner |
 | 2026-11-01 | 2.7 | `Index` holds a read-write lock so `Close` during searches is safe; text with a NUL byte is rejected | Without the lock, a search racing `Close` reads freed C memory (the race detector reported it when the lock was removed on purpose). `C.CString` silently truncates at NUL |
 | 2026-11-01 | 2.3 (revisited) | BM25 statistics (N, document frequency, average length) now cover only the chunks the caller can see, reversing the 2.3 choice of all chunks; [design §5](design.md#5-retrieval-engine-c) updated | Code review: with corpus-wide statistics, terms that appear only in private chunks changed the order of public results, a weak side channel. The cost was within benchmark noise |
+| 2026-11-01 | 3.3, 3.6 | New step 3.3 builds the answer turn (retrieval, prompt, streaming, citations); tools moved from 3.3 to 3.6. 3.4 and 3.5 keep their numbers | No step built the turn itself, and citations are what the evals check. Keeping 3.4 and 3.5 keeps earlier log references valid |
+| 2026-11-01 | 3.6, 7.3 | Confirmation uses DynamoDB-backed pending-action records (opaque `action_id`, one conditional update claims and de-duplicates), not a signed token; design §3, §6, §9 updated; 7.3 measures the latency | Running an action exactly once needs stored state either way, so a token would add a key to manage without removing the write. Postgres would put a Neon cold start mid-stream; DynamoDB's connection is already open for rate limiting |
+| 2026-11-01 | 3.2 | Router gains a 5 s first-token timeout | Without it a hung primary never triggers the fallback |
+| 2026-11-01 | 3.3 | Conversation history comes from a server-side `ConversationStore`, never the browser; the turn has limits (3 tool rounds, a deadline) | Browser-sent history could carry a forged assistant turn; an unbounded loop costs tokens and could break the stream contract on cancel |
+| 2026-11-01 | 3.4 | Corpus format specified (front matter parsed by our own parser, `doc-slug#heading` ids, sidecar JSON), and the index is written atomically | The indexer needs an input contract, the golden files already use these ids, and the atomic write resolves review finding #5 |
+| 2026-11-01 | 3.5 | Groq and Ollama share one package, `model/oai`; `Request.ResponseSchema` is `json.RawMessage` | One client for both OpenAI-compatible APIs, as decided on 2026-11-01; a schema type would add a dependency providers don't need |
 
 ## Code review log
 

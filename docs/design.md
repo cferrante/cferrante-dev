@@ -46,9 +46,13 @@ Request:
 {
   "conversation_id": "c_01J...",
   "message": "What Go projects has he built?",
-  "suggested_id": null
+  "suggested_id": null,
+  "confirm": null
 }
 ```
+
+`confirm` is `{"action_id": "..."}` when the visitor clicks confirm on a proposed action
+([§6](#6-tools-and-authorization)); otherwise `null`.
 
 Every event carries a monotonically increasing `seq` and `t_ms` (milliseconds since the request
 started, measured server-side) so the UI can order and time everything without trusting the
@@ -70,6 +74,7 @@ data: {"seq":4,"t_ms":12.9,"step_id":"s2","status":"ok","duration_ms":0.41,
 | `citation` | `n`, `chunk_id`, `title`, `url` |
 | `step_start` | `step_id`, `kind`: `rate_limit` \| `rewrite` \| `embed` \| `retrieval` \| `inference` \| `tool` \| `judge` \| `cache`, `label` |
 | `step_end` | `step_id`, `status`: `ok` \| `error` \| `skipped` \| `fallback`, `duration_ms`, `detail` (kind-specific, below) |
+| `confirm_request` | `action_id`, `tool`, `summary` (what will happen, in plain words), `expires_in_s` |
 | `judge` | `verdict`, `unsupported_claims[]` |
 | `error` | `code`, `message`, `retryable` |
 | `done` | `total_ms`, `conversation_id` |
@@ -82,6 +87,18 @@ Contract rules (enforced by tests in `orchestrator/sse`):
 2. `done` or `error` is always the last event; nothing follows it.
 3. Durations are measured with Go's monotonic clock, never wall-clock differences.
 4. Keep-alive comment (`: ping`) every 10 s so proxies don't close an idle stream.
+
+The writer is safe for concurrent use (the keep-alive ticker and the agent loop both write) and
+takes an injectable clock, so rules 3 and 4 are tested without real waiting.
+
+**Citations.** Retrieved chunks are given to the model numbered `[1]`…`[k]`. The first time the
+answer cites `[n]`, the orchestrator emits a `citation` event for chunk n; later citations of the
+same n emit nothing. A marker split across streamed chunks (`[` then `2]`) still counts once, and
+a number outside 1…k is ignored.
+
+**Turn limits.** At most 3 tool rounds per turn, and a deadline for the whole turn. A client
+disconnect cancels the turn's context; every open step still gets its `step_end` (status
+`error`), per rule 1.
 
 ## 4. Model layer
 
@@ -101,7 +118,7 @@ type Request struct {
     Tools           []ToolSpec   // already filtered to what the caller may use (§6)
     CacheAfterTools bool         // place a prompt-cache point after tool definitions
     Messages        []Message    // retrieved context + conversation + question
-    ResponseSchema  *jsonschema.Schema // non-nil = constrained JSON output
+    ResponseSchema  json.RawMessage // JSON Schema; non-nil = constrained JSON output
     MaxTokens       int
     ReasoningEffort string       // "low" | "medium" | "high" | "" (provider default)
 }
@@ -121,14 +138,15 @@ type Result struct {
 ```
 
 `CacheAfterTools` enables [prompt caching](concepts.md#prompt-caching); a non-nil `ResponseSchema`
-requests [structured output](concepts.md#structured-output); `Reasoning` events come from
+requests [structured output](concepts.md#structured-output) (raw JSON, so no schema library is
+needed: providers take the schema as JSON anyway); `Reasoning` events come from
 [reasoning models](concepts.md#reasoning-models); `ToolCall` events are
 [tool calls](concepts.md#tool-calling).
 
 | Implementation | Package | Built on |
 |---|---|---|
-| Groq | `model/groq` | Go standard-library HTTP + SSE client for Groq's OpenAI-compatible API. Not langchaingo: its provider drops gpt-oss's streamed `delta.reasoning` ([spike 1.5](plan.md#spike-findings)) |
-| Ollama | `model/ollama` | The same standard-library client as `model/groq`, pointed at Ollama's OpenAI-compatible `/v1` API. Whether Ollama streams reasoning in the same field is unverified; step 3.5 checks it against a recorded stream, and if it differs, a small adapter maps it |
+| Groq | `model/oai` | Go standard-library HTTP + SSE client for Groq's OpenAI-compatible API. Not langchaingo: its provider drops gpt-oss's streamed `delta.reasoning` ([spike 1.5](plan.md#spike-findings)) |
+| Ollama | `model/oai` | The same client as Groq, configured with a different base URL, pointed at Ollama's OpenAI-compatible `/v1` API. Whether Ollama streams reasoning in the same field is unverified; step 3.5 checks it against a recorded stream, and if it differs, a small adapter maps it |
 | Bedrock | `model/bedrock` | AWS SDK for Go v2 `ConverseStream` |
 | Fake | `model/fake` | scripted events, for tests |
 
@@ -141,6 +159,9 @@ and a fallback. It falls back **only if the primary fails before the first
 [token](concepts.md#token)** (rate limit `429`, `5xx`, timeout). Switching
 providers mid-answer would produce a stitched, incoherent reply, so after the first token an
 error is reported, not hidden. The action card shows `status: fallback` and the provider used.
+Any event from the model (reasoning, text or a tool call) counts as the first token. If the
+primary sends nothing within a **first-token timeout of 5 s**, the router cancels it and falls
+back, so a hung provider can't stall the turn.
 
 **[Embeddings](concepts.md#embedding)** are a separate interface: `Embed(ctx, texts []string) ([][]float32, error)`. Groq
 does not offer embeddings. **[[D1]](#d1-embedding-model)** Proposed: Bedrock Titan Text Embeddings v2 at 512 dimensions
@@ -239,6 +260,20 @@ void         rag_builder_free(rag_builder* b);
   NUL byte (C strings would cut it short), and leaves every other rule to the engine. A fully
   static test binary passes `check-glibc.sh`.
 
+**Corpus and indexer** (`orchestrator/cmd/indexer`, plan step 3.4):
+
+- **Input:** Markdown files under `corpus/`, each starting with a front-matter block parsed by our
+  own small parser (no YAML library), one `key: value` per line between `---` lines:
+  `title`, `url`, `access` (`public` or `invitee`). Unknown keys and a missing `access` are errors,
+  so a private document can't be published by a typo.
+- **Chunking:** split at headings, then at paragraphs, then at sentence boundaries when a section
+  is longer than the target size, with one sentence of overlap between neighbouring chunks.
+- **Chunk ids:** `<file-slug>#<heading-anchor>`, with `-2`, `-3`… for the second and later pieces
+  of a long section. The engine's numeric chunk ids map to these strings, plus title, URL and
+  text, in a sidecar JSON file written next to the index.
+- **Atomic write:** the index and sidecar are written to temporary files in the same directory
+  and renamed into place, so a failed build never leaves a half-written index.
+
 **Building for Lambda** (proven in spike 1.2): the Lambda binary is linked **fully static**
 (`-extldflags "-static"`, build tags `netgo,osusergo`), so it needs nothing from Amazon Linux
 2023's system libraries. Linking only the C++ runtime statically is not enough on Ubuntu 26.04:
@@ -261,10 +296,28 @@ Two layers of [authorization](concepts.md#authentication-vs-authorization)
 2. **Enforcement:** the executor re-checks the caller's [Cognito groups](concepts.md#cognito-groups) before running any tool.
    A forged or hallucinated tool call from an anonymous caller fails with `authorized: false`.
 
+**Who the caller is:** a `Caller{ID, Groups}` comes from an `Authenticator` interface. Cognito
+JWTs implement it in Phase 8; until then tests and `make dev` use a fixed caller chosen by a flag.
+
 Side-effecting tools require
 **[explicit confirmation](concepts.md#human-in-the-loop-confirmation)**: the agent proposes the action, the UI
 shows a confirm button, and only a confirmed request executes. This stops a [prompt injection](concepts.md#prompt-injection) from
-silently triggering actions. Each execution carries an [idempotency key](concepts.md#idempotency-key) so retries don't double-send.
+silently triggering actions.
+
+**Pending actions.** When the model calls a side-effecting tool, the orchestrator does not run
+it. It stores a pending-action record (`action_id`, caller, tool, arguments, status `pending`,
+expiry in 10 minutes) and emits `confirm_request` ([§3](#3-streaming-protocol-sse)). The browser
+holds only the opaque `action_id`. On `POST /chat` with `confirm`, the orchestrator loads the
+record, checks it belongs to this caller, is `pending` and hasn't expired, then claims it with
+one conditional update (`pending` → `executed`) and only then runs the tool. That one update is
+the [idempotency key](concepts.md#idempotency-key): a retried or double-clicked confirm finds the
+record already `executed` and runs nothing. Records are behind a `PendingActions` interface: in
+memory in Phase 3, the DynamoDB table of [§9](#9-rate-limiting-dynamodb) from Phase 7, with TTL
+removing expired records. Every proposal is kept until it expires, including ones nobody
+confirmed, which is evidence for the adversarial evals. (Considered: a signed token carrying the
+arguments. It still needs a store of executed tokens to run exactly once, so it adds a key to
+manage without removing the database write.) What is actually sent is then recorded in Postgres
+as before.
 
 Tools on the hot path read static config, not Postgres, keeping the database off the [hot path](concepts.md#hot-path).
 Side-effect writes happen after the user confirms, where a little latency is acceptable.
@@ -351,6 +404,10 @@ create table eval_results (
 - **[Retention](concepts.md#data-retention):** a daily scheduled job deletes `messages` older than 90 days.
 - **[Migrations](concepts.md#migrations):** plain numbered SQL files in `orchestrator/migrations/`, applied by a small Go
   command. **[[D3]](#d3-migrations-tool)** (or a tool such as `goose`, which adds a dependency).
+- **Conversation history** for the prompt comes through a `ConversationStore` interface, never
+  from the browser (a forged earlier "assistant" turn would be an injection). The last few turns
+  are used. In memory in Phase 3; the Phase 9 implementation must keep this read within the
+  latency budget (Neon scales to zero, so a cold read is measured before choosing).
 - The [golden dataset](concepts.md#golden-dataset) itself lives in git (`evals/golden/`), so it is reviewed like code; only
   *results* go to Postgres.
 
@@ -360,6 +417,10 @@ create table eval_results (
 - One atomic conditional `UpdateItem` per request (increment if below limit); items expire via [TTL](concepts.md#ttl).
 - Limits: anonymous 10 messages / 10 min; invitee 60 / 10 min. Over the limit returns an `error`
   event with `code: rate_limited`, `retryable: true`.
+- The same table holds pending actions ([§6](#6-tools-and-authorization)), keyed by
+  `action_id`, expiring via TTL. The rate-limit update already opens the DynamoDB connection on
+  every request, so proposing or confirming an action adds a write, not a connection. Both
+  latencies are measured from Lambda in plan step 7.3 against the 5 ms p50 / 15 ms p95 budget.
 
 ## 10. Eval file formats
 
