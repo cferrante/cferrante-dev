@@ -210,7 +210,8 @@ void         rag_builder_free(rag_builder* b);
   stop matching and nothing would crash.
 - **Tokenizer:** ASCII letters are lowercased; any byte that isn't an ASCII letter or digit
   separates tokens, and so do the Unicode dashes U+2010–U+2015 and U+2212 (gpt-oss writes U+2011,
-  see [spike findings](plan.md#spike-findings)). Other non-ASCII bytes stay inside tokens, without
+  see [spike findings](plan.md#spike-findings)) and the Unicode spaces U+00A0, U+2000–U+200A,
+  U+202F, U+205F and U+3000 (no-break spaces arrive through copy-paste and some keyboards). Other non-ASCII bytes stay inside tokens, without
   case folding. No stemming and no stop-word list: [BM25](concepts.md#bm25)'s IDF already
   down-weights common words.
 - **Index file:** versioned, little-endian binary (layout in `engine/src/index_file.h`). Header:
@@ -267,7 +268,14 @@ void         rag_builder_free(rag_builder* b);
   `title`, `url`, `access` (`public` or `invitee`). Unknown keys and a missing `access` are errors,
   so a private document can't be published by a typo.
 - **Chunking:** split at headings, then at paragraphs, then at sentence boundaries when a section
-  is longer than the target size, with one sentence of overlap between neighbouring chunks.
+  is longer than the target size (1,000 bytes by default), with one sentence of overlap between
+  neighbouring chunks; every chunk adds at least one new paragraph or sentence. A `#` line inside
+  a fenced code block is not a heading, and a code block is never split. What gets embedded and
+  keyword-indexed is `title — heading` plus the text, so a chunk is findable by its document
+  title. Duplicate chunk ids anywhere in the corpus stop the build.
+- **Embedding model check:** the sidecar records the embedding model and dimension; loading an
+  index with a different embedder fails, since vectors from different models aren't comparable.
+  A `hash` embedder (bag-of-words hashing, no download) serves tests and offline builds.
 - **Chunk ids:** `<file-slug>#<heading-anchor>`, with `-2`, `-3`… for the second and later pieces
   of a long section. The engine's numeric chunk ids map to these strings, plus title, URL and
   text, in a sidecar JSON file written next to the index.
