@@ -1,0 +1,16 @@
+data: {"id":"chatcmpl-1","object":"chat.completion.chunk","model":"openai/gpt-oss-120b","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-1","object":"chat.completion.chunk","model":"openai/gpt-oss-120b","choices":[{"index":0,"delta":{"reasoning":"The user asks 2+2. "},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-1","object":"chat.completion.chunk","model":"openai/gpt-oss-120b","choices":[{"index":0,"delta":{"reasoning":"That is 4."},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-1","object":"chat.completion.chunk","model":"openai/gpt-oss-120b","choices":[{"index":0,"delta":{"content":"2 + 2"},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-1","object":"chat.completion.chunk","model":"openai/gpt-oss-120b","choices":[{"index":0,"delta":{"content":" = 4."},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-1","object":"chat.completion.chunk","model":"openai/gpt-oss-120b","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"x_groq":{"id":"req_1","usage":{"prompt_tokens":80,"completion_tokens":14,"total_tokens":94,"completion_tokens_details":{"reasoning_tokens":9}}}}
+
+data: {"id":"chatcmpl-1","object":"chat.completion.chunk","model":"openai/gpt-oss-120b","choices":[],"usage":{"prompt_tokens":80,"completion_tokens":14,"total_tokens":94,"prompt_tokens_details":{"cached_tokens":64},"completion_tokens_details":{"reasoning_tokens":9}}}
+
+data: [DONE]
+

@@ -98,12 +98,13 @@ disagree.
 | 2026-10-31 | spike 1.4 | 128 MB | x86_64 | Platform overhead, through CloudFront + OAC, warm | 180 ms | — | — | n = 1 (POST with body hash); too few runs for p95 |
 | 2026-10-31 | spike 1.4 | 128 MB | x86_64 | First event through CloudFront, cold | 463 ms | — | — | n = 1, right after deploy; includes Lambda init and a new CloudFront connection |
 | 2026-10-31 | spike 1.3 | 128 MB | x86_64 | Cold start (`Init Duration`), Go runtime only | 68 ms | 72 ms | — | n = 6; no index load or secrets yet. 128 MB is Lambda's smallest CPU share; the orchestrator's memory size is chosen in Phase 7 |
+| 2026-11-01 | spike 1.5 | 128 MB | x86_64 | Cold start (`Init Duration`), Go + AWS SDK config + SSM SecureString read | 205 ms | — | — | n = 1; against 1.3's 68 ms for Go alone, loading AWS config and reading the key adds about 140 ms of the 400 ms cold-start target. Max memory used 33 MB |
 
 ### Model providers
 
 | Date | Provider | Model | TTFT p50 | TTFT p95 | Tokens/s p50 | Cached tokens | Notes |
 |---|---|---|---|---|---|---|---|
-| — | — | — | — | — | — | — | not yet measured |
+| 2026-11-01 | Groq, from Lambda (128 MB, x86_64, us-east-1) | `openai/gpt-oss-120b` | 198 ms | 464 ms | 483 | 256 on 7 of 20 turn-2 requests; 0 on turn 1 | n = 20 after 1 warm-up, 10 s apart; spike 1.5 at `bfd5c26`; default reasoning effort. TTFT is turn 1 (question + one tool, 185 input tokens), p99 811 ms; turn 2 (with the tool result, 304–560 input tokens) p50 215 ms, p95 354 ms. Tokens/s from turn 2 (271–447 output tokens incl. reasoning); slowest 5% 354 |
 
 ## Questions the benchmarks should answer
 
