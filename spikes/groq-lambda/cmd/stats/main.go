@@ -1,6 +1,7 @@
 // Command stats summarises bench.sh's run reports (one JSON object per
-// line): a row per run, then p50/p95/p99 TTFT and tokens/s, and a PASS or
-// FAIL verdict. Percentiles use the nearest-rank method on the runs given.
+// line): a row per run, then TTFT p50/p95/p99 and tokens/s p50/p5/p1 (for
+// throughput the slow tail is the low end), and a PASS or FAIL verdict.
+// Percentiles use the nearest-rank method on the runs given.
 //
 //	go run ./spikes/groq-lambda/cmd/stats [-want N] FILE.jsonl
 package main

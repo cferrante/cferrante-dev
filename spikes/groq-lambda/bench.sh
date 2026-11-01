@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # The spike's test and benchmark. Invokes the Lambda once to warm it up
 # (reporting its cold start), then RUNS more times, each one tool call round
-# trip against Groq. Prints every run, p50/p95/p99 TTFT and tokens/s, and
+# trip against Groq. Prints every run, TTFT p50/p95/p99, tokens/s p50/p5/p1
+# (for throughput the slow tail is the low end), and
 # PASS only if every run streamed reasoning and text separately and
 # round-tripped the tool call.
 #
@@ -49,7 +50,10 @@ invoke() {
 } | tee "$base.txt"
 
 echo "== warm-up (discarded)" | tee -a "$base.txt"
-IFS=$'\t' read -r ferr logs < <(invoke --log-type Tail)
+if ! IFS=$'\t' read -r ferr logs < <(invoke --log-type Tail); then
+  echo "FAIL: the warm-up invoke didn't run (see the aws error above). Has ./deploy.sh run? Is the SSO session still valid?" >&2
+  exit 1
+fi
 report=$(base64 -d <<<"$logs" | grep '^REPORT' || true)
 if [[ $report =~ Init\ Duration:\ ([0-9.]+\ ms) ]]; then
   echo "cold start: ${BASH_REMATCH[1]} Init Duration (Go runtime + AWS config + SSM key read)" | tee -a "$base.txt"
@@ -67,11 +71,13 @@ grep -o '"ok":[a-z]*' "$resp" | tee -a "$base.txt"
 echo "== $runs runs, ${gap}s apart" | tee -a "$base.txt"
 for (( i = 1; i <= runs; i++ )); do
   sleep "$gap"
-  ferr=$(invoke | cut -f1)
+  # A CLI-level failure (throttling, an expired session) is a failed run,
+  # not the end of the bench: earlier runs still get summarised.
+  ferr=$(invoke | cut -f1) || ferr="aws CLI error, see above"
   if [[ $ferr == None ]]; then
     cat "$resp" >>"$base.jsonl"
   else
-    printf '{"ok":false,"problems":["Lambda FunctionError: %s"]}' "$ferr" >>"$base.jsonl"
+    printf '{"ok":false,"problems":["invoke failed: %s"]}' "$ferr" >>"$base.jsonl"
   fi
   echo >>"$base.jsonl"
   echo "run $i: $(tail -n1 "$base.jsonl" | grep -o '"ok":[a-z]*')"

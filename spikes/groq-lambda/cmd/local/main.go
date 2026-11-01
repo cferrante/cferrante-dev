@@ -33,6 +33,7 @@ func main() {
 	record := flag.String("record", "", "directory to save raw response streams in")
 	model := flag.String("model", "openai/gpt-oss-120b", "Groq model id")
 	gap := flag.Duration("gap", 5*time.Second, "pause between runs (free-tier rate limits)")
+	timeout := flag.Duration("timeout", 60*time.Second, "limit per run, so a stalled stream can't hang it")
 	flag.Parse()
 
 	if os.Getenv("AWS_PROFILE") == "" {
@@ -43,7 +44,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("aws config: %v", err)
 	}
-	key, err := ssmkey.Load(ctx, ssm.NewFromConfig(cfg), ssmkey.DefaultName)
+	name := ssmkey.DefaultName
+	if v := os.Getenv("GROQ_KEY_PARAM"); v != "" { // as deploy.sh and the Lambda
+		name = v
+	}
+	key, err := ssmkey.Load(ctx, ssm.NewFromConfig(cfg), name)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -61,7 +66,9 @@ func main() {
 		if i > 1 {
 			time.Sleep(*gap)
 		}
-		rep, err := roundtrip.Run(ctx, client, *model)
+		runCtx, cancel := context.WithTimeout(ctx, *timeout)
+		rep, err := roundtrip.Run(runCtx, client, *model)
+		cancel()
 		if err != nil {
 			rep.OK = false
 			rep.Problems = append(rep.Problems, err.Error())
