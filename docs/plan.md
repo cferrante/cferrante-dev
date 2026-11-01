@@ -108,7 +108,7 @@ rather than a rewrite.
 |---|---|---|
 | **2.1** CMake project + vendored doctest; `normalize()` and the simplest `dot()` (one running sum); `make test` runs the C++ tests and CI builds them | Unit tests for known vectors (incl. zero vector) fail | Pass, with `-fsanitize=address,undefined` in the test build, locally and in CI **✅ 2026-11-01** (doctest v2.5.3, nanobench v4.6.0 vendored) |
 | **2.2** Brute-force top-k with access mask | Test: a private chunk with the highest score is excluded for mask `0x1` | Correct order, ties by lower chunk id, k > count handled **✅ 2026-11-01** |
-| **2.3** Tokenizer + BM25 over an inverted index | Tokenizer cases (case, punctuation, U+2011 splits, non-ASCII kept) and hand-computed scores for a 3-doc fixture fail | Tokens as specified; scores match to 1e-5 |
+| **2.3** Tokenizer + BM25 over an inverted index | Tokenizer cases (case, punctuation, U+2011 splits, non-ASCII kept) and hand-computed scores for a 3-doc fixture fail | Tokens as specified; scores match to 1e-5 **✅ 2026-11-01** |
 | **2.4** Reciprocal Rank Fusion and hybrid search, with the [design §5](design.md#5-retrieval-engine-c) edge cases | Fixture where fusion must reorder results; empty text → vector only; zero vector → BM25 only | Matches hand-computed ranking; every edge case tested |
 | **2.5** Versioned index file and the full C ABI: builder (`rag_builder_*`), `rag_index_load`, `rag_search` | Round-trip test; loading a wrong-version, truncated or corrupt file must return an error, not crash | Round-trip exact; under ASan, a loop rejects every truncation length and a flipped bit at every byte; no exception escapes the ABI |
 | **2.6** Benchmarks (nanobench, 2k × 512 chunks generated from a fixed seed) + a **pure-Go baseline** | CI gate "p99 < 1 ms" fails on the single-sum `dot()` (estimated ~1.3 ms on CI, to be measured) | `dot()` rewritten with independent accumulators the compiler vectorizes; gate green; C++ vs Go numbers recorded honestly in [benchmarks](benchmarks.md#results) |
@@ -234,6 +234,7 @@ Any change from this plan: what changed, why, and which step.
 | 2026-11-01 | 2.1 | doctest and nanobench vendored and pinned by SHA-256, not fetched by CMake | Offline, reproducible CI; no supply-chain download at build time |
 | 2026-11-01 | 2.6 | "SIMD path" means a portable multi-accumulator loop the compiler vectorizes, not intrinsics | Keeps the portability rule; a single running sum can't be vectorized without `-ffast-math`, which is why the naive gate is expected to fail |
 | 2026-11-01 | 2.7 | `engine/go` compiles the engine sources through cgo instead of linking a CMake-built library | `go test ./...` and the Lambda build stay one command; CMake remains for C++ tests, sanitizers and benchmarks |
+| 2026-11-01 | 2.3 | BM25's IDF form, single counting of repeated query terms, and corpus-wide N and average length added to [design §5](design.md#5-retrieval-engine-c) | "Hand-computed scores" need one exact formula; BM25 has several common IDF variants, and Lucene's can't go negative |
 
 ## Code review log
 
@@ -258,6 +259,10 @@ Outcome of each review: finding, decision (fixed / won't fix / deferred), and wh
 | 2026-11-01 | 1.5 (`/code-review medium`) | Turn 1 didn't check `finish_reason`, so a call cut off by `length` showed up as bad tool arguments | Fixed, test first |
 | 2026-11-01 | 1.5 (`/code-review medium`) | `bench.sh` exited on one failed `aws` invoke without summarising, and a failed warm-up gave no hint; `cmd/local` had no time limit and ignored `GROQ_KEY_PARAM`; headers still said tokens/s p95 | Fixed; bench checked against a fake `aws` that fails one invoke |
 | 2026-11-01 | 1.5 (`/code-review medium`) | Tokens/s divides N tokens by the N − 1 gaps between first and last arrival, which inflates it | Won't fix: that is the [definition](benchmarks.md#metric-definitions); under 1% for ~330 tokens |
+| 2026-11-01 | 2.2 | Two break-it checks first failed to compile (`-Werror` on an unused parameter), proving nothing | Redone as compiling breaks; both caught. `k = 0` and empty-index cases can't be broken without identical behaviour, so they stay as crash guards under ASan |
+| 2026-11-01 | 2.3 | GCC's `-Werror=bidi-chars` rejected a test containing a literal U+200F (an invisible text-direction mark, the "Trojan Source" attack) | Fixed: written as hex escapes. The warning stays on |
+| 2026-11-01 | 2.3 | Self-found: a zero-total-length guard in `bm25_topk` was dead code (no tokens means no postings, so nothing divides); deleting it failed no test | Removed, with a comment saying why the division is safe |
+| 2026-11-01 | 2.3 | Self-found: Unicode spaces (U+00A0 no-break space, U+2000–U+200A, U+3000) don't split tokens, as specified, so `Go\u00A0engine` is one token | Deferred: revisit with the real corpus in 3.4; adding them is one line plus tests |
 
 ## Spike findings
 
