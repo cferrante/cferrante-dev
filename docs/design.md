@@ -128,7 +128,7 @@ requests [structured output](concepts.md#structured-output); `Reasoning` events 
 | Implementation | Package | Built on |
 |---|---|---|
 | Groq | `model/groq` | Go standard-library HTTP + SSE client for Groq's OpenAI-compatible API. Not langchaingo: its provider drops gpt-oss's streamed `delta.reasoning` ([spike 1.5](plan.md#spike-findings)) |
-| Ollama | `model/ollama` | langchaingo `llms/ollama` |
+| Ollama | `model/ollama` | The same standard-library client as `model/groq`, pointed at Ollama's OpenAI-compatible `/v1` API. Whether Ollama streams reasoning in the same field is unverified; step 3.5 checks it against a recorded stream, and if it differs, a small adapter maps it |
 | Bedrock | `model/bedrock` | AWS SDK for Go v2 `ConverseStream` |
 | Fake | `model/fake` | scripted events, for tests |
 

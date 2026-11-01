@@ -64,7 +64,7 @@ flowchart LR
     CF --> S3[(S3<br/>site files)]
     CF -->|SSE| L[Go orchestrator<br/>AWS Lambda]
     L -->|cgo| E[C++ compute engine<br/>vector + BM25 search]
-    L -->|langchaingo| G[Groq<br/>primary LLM]
+    L -->|HTTPS stream| G[Groq<br/>primary LLM]
     L -.->|fallback on rate limit| BR[Amazon Bedrock<br/>Nova Lite]
     L --> T[Tools<br/>availability, messages]
     L --> RL[(DynamoDB<br/>rate limits)]
@@ -77,7 +77,7 @@ flowchart LR
 | Frontend | HTML/JS, no framework; **Tailwind CSS v4** (standalone CLI); S3 + CloudFront | Split-pane UI, SSE client |
 | Orchestrator | **Go** on AWS Lambda (`provided.al2023`), response streaming | Agent loop, tool calls, authorization, timing, SSE |
 | Compute engine | **C++**, linked into Go via **[cgo](docs/concepts.md#cgo)** | In-memory vector similarity + BM25 hybrid retrieval |
-| LLM framework | **langchaingo** | Groq (OpenAI-compatible API) and Ollama behind one interface |
+| Model clients | **Go standard library** (Groq, Ollama); AWS SDK for Go v2 (Bedrock) | Every provider behind one small `Model` interface; no LLM framework |
 | Models | Groq **gpt-oss-120b** (answers), **gpt-oss-20b** (judge, rewrites); Bedrock Nova Lite fallback; Ollama locally | See [Model routing](#model-routing) |
 | Auth | Amazon Cognito (self-sign-up disabled) | Invitation-only features |
 | Rate limits | DynamoDB | Per-IP limits on the hot path, single-digit ms |
@@ -123,9 +123,11 @@ Every model sits behind one small Go `Model` interface, so providers are swappab
 | Fallback (Groq rate limit / outage) | Bedrock Nova Lite, via the AWS SDK `ConverseStream` API | Pay-per-token cents; the action card shows which provider answered |
 | Local dev + adversarial tests | Ollama, small 3–4B model | $0; fits in 15 GB RAM |
 
-langchaingo is used for Groq (via its OpenAI-compatible provider with a custom base URL) and
-Ollama. Bedrock uses a direct AWS SDK adapter because langchaingo v0.1.15's Bedrock provider has no
-streaming or tool calling for Nova models.
+No LLM framework. Groq and Ollama both speak an OpenAI-compatible streaming API, so one small
+client on Go's standard library serves both; Bedrock uses the AWS SDK's `ConverseStream`.
+langchaingo was the original plan, but spike 1.5 found its OpenAI provider silently drops Groq's
+streamed reasoning, the stream the thought pane is built on, and it would have added 290 modules
+([findings](docs/plan.md#spike-findings)).
 
 The final production model choice is made by the [evals](#evaluation-and-safety), not by
 benchmarks.
