@@ -62,8 +62,9 @@ disagree.
 - **Enough samples.** At least 1,000 iterations for in-process benchmarks; at least 50 requests for
   network benchmarks, spread over time so one quiet minute doesn't flatter the numbers.
 - **Record the environment.** Machine/CPU, Lambda memory size, region, model id, git sha, date.
-- **Same corpus.** Benchmarks run against a fixed, versioned fixture corpus (`engine/testdata/`),
-  not the live corpus that changes as I edit it.
+- **Same corpus.** Benchmarks run against a fixed synthetic corpus generated in code from a fixed
+  seed (`engine/bench/bench.cc`: Zipf-distributed words, random unit vectors), not the live
+  corpus that changes as I edit it.
 - **Compare like with like.** Local (WSL2 laptop) and Lambda numbers go in separate tables.
 - **Never edit a result by hand.** Results are pasted from tool output.
 
@@ -73,6 +74,7 @@ disagree.
 |---|---|---|---|
 | C++ retrieval, 2k chunks × 512 dims | nanobench (single header) | `make bench-engine` | p99 < 1 ms on CI runner |
 | C++ retrieval scaling (1k → 50k chunks) | nanobench | `make bench-engine-scale` | none (informational) |
+| Pure-Go vector baseline, 2k × 512 | Go harness | `make bench-go` | none (informational) |
 | cgo round-trip overhead | `go test -bench` | `make bench-cgo` | none |
 | Go hybrid path (embed stubbed) | `go test -bench` | `make bench-orchestrator` | none |
 | [SSE](concepts.md#sse) end-to-end, fake model | Go test client | `make bench-sse` | first event < 20 ms |
@@ -84,11 +86,36 @@ disagree.
 
 ## Results
 
-### Local (WSL2, 8 cores, 15 GB RAM)
+### Local (WSL2, Intel Core Ultra 7 258V, 8 cores, 15 GB RAM)
+
+Retrieval rows: one `rag_search` call per sample through the C ABI on a loaded index, k = 10,
+mask `0x1` (one chunk in eight private), 100 warm-up calls then 2,000 timed (500 for scaling),
+GCC 15.2 `-O3`, no `-march`.
 
 | Date | Git sha | Benchmark | p50 | p95 | p99 | Notes |
 |---|---|---|---|---|---|---|
-| — | — | — | — | — | — | not yet measured |
+| 2026-11-01 | #33 | C++ hybrid, 2k × 512, single-sum `dot()` | 0.371 ms | 0.459 ms | 0.551 ms | Before vectorising; three runs gave p99 0.52–0.70 ms |
+| 2026-11-01 | #33 | C++ hybrid, 2k × 512, 16-sum `dot()` | 0.461 ms | 0.601 ms | 1.017 ms | Slower than one sum; not used |
+| 2026-11-01 | #33 | **C++ hybrid, 2k × 512, 8-sum `dot()`** | **0.122 ms** | **0.157 ms** | **0.225 ms** | Shipped. GCC reports the loop vectorised with 16-byte (SSE2) vectors; three runs gave p99 0.23–0.32 ms |
+| 2026-11-01 | #33 | C++ vector-only, 2k × 512, 8-sum | 0.097 ms | 0.117 ms | 0.182 ms | Same-day comparison with the Go row below |
+| 2026-11-01 | #33 | Pure-Go vector top-k, 2k × 512 | 0.408 ms | 0.492 ms | 0.692 ms | Same contract and 8 independent sums; Go 1.27.1 doesn't vectorise. Not through cgo |
+| 2026-11-01 | #33 | C++ hybrid scaling, 1k × 512 | 0.065 ms | 0.076 ms | 0.091 ms | `make bench-engine-scale` |
+| 2026-11-01 | #33 | C++ hybrid scaling, 5k × 512 | 0.312 ms | 0.463 ms | 0.549 ms | |
+| 2026-11-01 | #33 | C++ hybrid scaling, 10k × 512 | 1.004 ms | 1.240 ms | 1.578 ms | Over the gate. The 5k → 10k step is worse than linear; vectors are 20 MB here, likely past the CPU cache (not verified) |
+| 2026-11-01 | #33 | C++ hybrid scaling, 20k × 512 | 2.275 ms | 2.749 ms | 3.727 ms | |
+| 2026-11-01 | #33 | C++ hybrid scaling, 50k × 512 | 5.600 ms | 6.351 ms | 8.013 ms | |
+
+### CI runner (GitHub Actions `ubuntu-latest`)
+
+Same benchmark as the local table, run by `make bench-engine` in the Test job. Shared runners
+vary, so the gate has wide headroom. CPU model not recorded.
+
+| Date | Git sha | Benchmark | p50 | p95 | p99 | Notes |
+|---|---|---|---|---|---|---|
+| 2026-11-01 | #32 (throwaway) | C++ hybrid, 2k × 512, single-sum `dot()` | 0.454 ms | 0.472 ms | 0.481 ms | Passed the gate before vectorising; see the plan's deviations log |
+| 2026-11-01 | #32 (throwaway) | C++ hybrid, single-sum `dot()` slowed 4× on purpose | 3.352 ms | 3.381 ms | 3.439 ms | Gate failed CI, as intended |
+| 2026-11-01 | #33 | **C++ hybrid, 2k × 512, 8-sum `dot()`** | **0.086 ms** | **0.094 ms** | **0.099 ms** | Shipped; gate green with 10× headroom |
+| 2026-11-01 | #33 | C++ vector-only, 2k × 512, 8-sum | 0.060 ms | 0.067 ms | 0.069 ms | |
 
 ### AWS Lambda
 
@@ -110,8 +137,14 @@ disagree.
 
 1. Is C++ actually faster than plain Go for this search, and by how much? (Benchmark a pure-Go
    baseline too; if C++ isn't clearly faster, say so.)
+   **Answer (2026-11-01, local):** yes, about 4× for vector top-k (p50 0.097 ms vs 0.408 ms), because
+   GCC vectorises the loop and Go's compiler doesn't. In absolute terms both are under 0.5 ms
+   against a ~200 ms model TTFT, so the gain is headroom for a larger corpus, not something a
+   visitor would notice.
 2. At what corpus size does [brute force](concepts.md#brute-force-vs-approximate-search) stop
    meeting the 1 ms target?
+   **Answer (2026-11-01, local):** between 5k chunks (p99 0.55 ms) and 10k (p99 1.58 ms) at 512
+   dimensions. A portfolio corpus is expected to be well under 2k chunks.
 3. Does [int8 quantization](concepts.md#quantization) change the search results? (Measure
    retrieval [hit@5](concepts.md#hit-at-k) alongside speed.)
 4. x86 ([AVX2](concepts.md#simd)) vs ARM Graviton (NEON) on Lambda: speed and cost.
