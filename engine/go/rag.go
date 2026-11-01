@@ -78,6 +78,9 @@ func Load(path string) (*Index, error) {
 // Dim is the vector length the index expects.
 func (ix *Index) Dim() int { return ix.dim }
 
+// Count is the number of chunks in the index.
+func (ix *Index) Count() int { return ix.count }
+
 // Search returns up to k hits for chunks whose access bits intersect mask,
 // best first. text may be empty (vector search only); an all-zero vec means
 // keyword search only. vec must have Dim() finite values. A NUL in text is

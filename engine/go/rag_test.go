@@ -72,6 +72,9 @@ func TestBuildLoadSearch(t *testing.T) {
 	if ix.Dim() != 4 {
 		t.Errorf("Dim = %d, want 4", ix.Dim())
 	}
+	if ix.Count() != 3 {
+		t.Errorf("Count = %d, want 3", ix.Count())
+	}
 	hits, err := ix.Search(query, "Lambda?", public, 10)
 	if err != nil {
 		t.Fatalf("Search: %v", err)
