@@ -3,6 +3,9 @@
 //
 //	make dev                      # Ollama: qwen3:4b + nomic-embed-text
 //	make dev DEV_FLAGS=-invitee   # as an invitee, so private chunks appear
+//
+// Every option is also an environment variable, read from the shell or a
+// git-ignored .env file (see .env.example); a flag overrides both.
 package main
 
 import (
@@ -22,6 +25,7 @@ import (
 	"github.com/cferrante/cferrante-dev/orchestrator/agent"
 	"github.com/cferrante/cferrante-dev/orchestrator/auth"
 	"github.com/cferrante/cferrante-dev/orchestrator/clock"
+	cfg "github.com/cferrante/cferrante-dev/orchestrator/config"
 	"github.com/cferrante/cferrante-dev/orchestrator/corpus"
 	"github.com/cferrante/cferrante-dev/orchestrator/embed"
 	"github.com/cferrante/cferrante-dev/orchestrator/model"
@@ -31,36 +35,54 @@ import (
 )
 
 type config struct {
-	addr, corpusDir, index, embedder, model, effort string
-	invitee                                         bool
+	addr, corpusDir, index, ollamaURL   string
+	embedder, embedModel, model, effort string
+	embedDim                            int // 0: the embedder's own default
+	invitee                             bool
 }
 
-func parse(args []string) (config, error) {
+// parse reads the configuration. Every option has an environment variable
+// (design §11), and a flag overrides it: flag > environment > default.
+func parse(args []string, getenv cfg.Getenv) (config, error) {
+	env := cfg.New(getenv)
 	fs := flag.NewFlagSet("dev", flag.ContinueOnError)
 	var c config
-	fs.StringVar(&c.addr, "addr", "127.0.0.1:8787", "listen address (localhost only by default)")
-	fs.StringVar(&c.corpusDir, "corpus", "orchestrator/corpus/testdata/corpus", "corpus directory")
-	fs.StringVar(&c.index, "index", "build/dev/corpus.idx", "where to build the index")
-	fs.StringVar(&c.embedder, "embedder", "ollama", "ollama (nomic-embed-text) or hash (no Ollama needed)")
-	fs.StringVar(&c.model, "model", "qwen3:4b", "Ollama chat model")
-	fs.StringVar(&c.effort, "effort", "low", "reasoning effort; low keeps qwen3's thinking short on a CPU")
-	fs.BoolVar(&c.invitee, "invitee", false, "act as an invitee (sees private chunks)")
+	fs.StringVar(&c.addr, "addr", env.String("LISTEN_ADDR", "127.0.0.1:8787"), "listen address, localhost only by default [LISTEN_ADDR]")
+	fs.StringVar(&c.corpusDir, "corpus", env.String("CORPUS_DIR", "orchestrator/corpus/testdata/corpus"), "corpus directory [CORPUS_DIR]")
+	fs.StringVar(&c.index, "index", env.String("INDEX_PATH", "build/dev/corpus.idx"), "where to build the index [INDEX_PATH]")
+	fs.StringVar(&c.ollamaURL, "ollama", env.String("OLLAMA_BASE_URL", embed.OllamaBaseURL), "Ollama's base URL [OLLAMA_BASE_URL]")
+	fs.StringVar(&c.embedder, "embedder", env.String("EMBEDDER", "ollama"), "ollama, or hash (no Ollama needed) [EMBEDDER]")
+	fs.StringVar(&c.embedModel, "embed-model", env.String("EMBED_MODEL", "nomic-embed-text"), "Ollama embedding model [EMBED_MODEL]")
+	fs.IntVar(&c.embedDim, "embed-dim", env.Int("EMBED_DIM", 0), "embedding size; 0 = 768 for ollama, 256 for hash [EMBED_DIM]")
+	fs.StringVar(&c.model, "model", env.String("CHAT_MODEL", "qwen3:4b"), "Ollama chat model [CHAT_MODEL]")
+	fs.StringVar(&c.effort, "effort", env.String("REASONING_EFFORT", "low"), "reasoning effort; low keeps qwen3's thinking short on a CPU [REASONING_EFFORT]")
+	fs.BoolVar(&c.invitee, "invitee", env.Bool("DEV_INVITEE", false), "act as an invitee, who sees private chunks [DEV_INVITEE]")
+	if err := env.Err(); err != nil {
+		return c, err
+	}
 	return c, fs.Parse(args)
 }
 
-func embedderFor(name string) (embed.Embedder, error) {
-	switch name {
+func embedderFor(c config) (embed.Embedder, error) {
+	switch c.embedder {
 	case "ollama":
-		return embed.Ollama{Name: "nomic-embed-text", D: 768}, nil
+		return embed.Ollama{BaseURL: c.ollamaURL, Name: c.embedModel, D: dimOr(c.embedDim, 768)}, nil
 	case "hash":
-		return embed.Hash{D: 256}, nil
+		return embed.Hash{D: dimOr(c.embedDim, 256)}, nil
 	}
-	return nil, fmt.Errorf("unknown -embedder %q", name)
+	return nil, fmt.Errorf("unknown embedder %q", c.embedder)
+}
+
+func dimOr(d, def int) int {
+	if d > 0 {
+		return d
+	}
+	return def
 }
 
 // setup builds the index and returns the HTTP handler and a cleanup func.
 func setup(ctx context.Context, c config, m model.Model, logw io.Writer) (http.Handler, func(), error) {
-	e, err := embedderFor(c.embedder)
+	e, err := embedderFor(c)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -93,13 +115,18 @@ func setup(ctx context.Context, c config, m model.Model, logw io.Writer) (http.H
 }
 
 func main() {
-	c, err := parse(os.Args[1:])
+	// Settings: flag > shell environment > .env in the working directory > default.
+	getenv, err := cfg.WithDotEnv(".env", os.Getenv)
 	if err != nil {
-		os.Exit(2)
+		log.Fatal(err)
+	}
+	c, err := parse(os.Args[1:], getenv)
+	if err != nil {
+		log.Fatal(err)
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	m := &oai.Client{Provider: "ollama", BaseURL: oai.OllamaBaseURL, Model: c.model, ReasoningEffort: c.effort}
+	m := &oai.Client{Provider: "ollama", BaseURL: c.ollamaURL + "/v1", Model: c.model, ReasoningEffort: c.effort}
 	h, cleanup, err := setup(ctx, c, m, os.Stdout)
 	if err != nil {
 		log.Fatal(err)
@@ -112,7 +139,8 @@ func main() {
 		defer cancel()
 		srv.Shutdown(shutdown)
 	}()
-	fmt.Printf("serving http://%s/chat (model %s via Ollama, invitee=%v); Ctrl+C to stop\n", c.addr, c.model, c.invitee)
+	fmt.Printf("serving http://%s/chat (model %s, effort %s, via Ollama at %s, invitee=%v); Ctrl+C to stop\n",
+		c.addr, c.model, c.effort, c.ollamaURL, c.invitee)
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatal(err)
 	}
