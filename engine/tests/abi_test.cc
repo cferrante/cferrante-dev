@@ -48,6 +48,8 @@ TEST_CASE("build, write, load and search through the C ABI") {
   REQUIRE_MESSAGE(idx != nullptr, err);
   CHECK(rag_index_dim(idx) == 4);
   CHECK(rag_index_dim(nullptr) == 0);
+  CHECK(rag_index_count(idx) == 3);
+  CHECK(rag_index_count(nullptr) == 0);
   rag_hit out[10];
   const int n = rag_search(idx, kQuery, 4, "Lambda?", 0x1, 10, out);
   REQUIRE(n == 3);
