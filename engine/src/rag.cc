@@ -5,11 +5,11 @@
 #include <algorithm>
 #include <cerrno>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <exception>
-#include <filesystem>
-#include <fstream>
 #include <limits>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -39,8 +39,43 @@ void set_err(char* err, size_t err_len, std::string_view msg) noexcept {
   err[n] = '\0';
 }
 
+// C stdio sets errno on failure (iostreams don't promise to), so the message
+// names the real cause. Callers clear errno before the operation.
 std::string os_error(const std::string& what, const char* path) {
-  return what + " " + path + ": " + std::strerror(errno);
+  return what + " " + path + ": " + (errno != 0 ? std::strerror(errno) : "unknown I/O error");
+}
+
+using File = std::unique_ptr<std::FILE, int (*)(std::FILE*)>;
+
+// Reads the whole file with one sized read; false with a message on failure.
+bool read_file(const char* path, std::vector<std::uint8_t>& out, std::string& msg) {
+  errno = 0;
+  File f(std::fopen(path, "rb"), &std::fclose);
+  if (!f) return msg = os_error("cannot open", path), false;
+  if (std::fseek(f.get(), 0, SEEK_END) != 0) return msg = os_error("cannot read", path), false;
+  const long size = std::ftell(f.get());
+  if (size < 0 || std::fseek(f.get(), 0, SEEK_SET) != 0) {
+    return msg = os_error("cannot read", path), false;
+  }
+  out.resize(static_cast<std::size_t>(size));
+  if (std::fread(out.data(), 1, out.size(), f.get()) != out.size()) {
+    return msg = os_error("cannot read", path), false;
+  }
+  return true;
+}
+
+bool write_file(const char* path, const std::vector<std::uint8_t>& bytes, std::string& msg) {
+  errno = 0;
+  std::FILE* f = std::fopen(path, "wb");
+  if (f == nullptr) return msg = os_error("cannot create", path), false;
+  const bool wrote = std::fwrite(bytes.data(), 1, bytes.size(), f) == bytes.size();
+  const int saved = errno;
+  // fclose flushes the buffer, so a full disk often only shows up here.
+  if (std::fclose(f) != 0 || !wrote) {
+    if (!wrote) errno = saved;
+    return msg = os_error("cannot write", path), false;
+  }
+  return true;
 }
 
 }  // namespace
@@ -53,19 +88,13 @@ rag_index* rag_index_load(const char* path, char* err, size_t err_len) noexcept 
       set_err(err, err_len, "path is NULL");
       return nullptr;
     }
-    std::ifstream in(path, std::ios::binary);
-    if (!in) {
-      set_err(err, err_len, os_error("cannot open", path));
-      return nullptr;
-    }
-    std::vector<std::uint8_t> bytes((std::istreambuf_iterator<char>(in)),
-                                    std::istreambuf_iterator<char>());
-    if (in.bad()) {
-      set_err(err, err_len, os_error("cannot read", path));
+    std::vector<std::uint8_t> bytes;
+    std::string msg;
+    if (!read_file(path, bytes, msg)) {
+      set_err(err, err_len, msg);
       return nullptr;
     }
     auto* idx = new rag_index;
-    std::string msg;
     if (!rag::deserialize(bytes, idx->index, msg)) {
       delete idx;
       set_err(err, err_len, std::string(path) + ": " + msg);
@@ -165,17 +194,9 @@ int rag_builder_write(const rag_builder* b, const char* path, char* err,
     idx.vectors = b->vectors;
     idx.access = b->access;
     idx.bm25 = rag::bm25_build(b->docs);
-    const auto bytes = rag::serialize(idx);
-    std::ofstream out(path, std::ios::binary | std::ios::trunc);
-    if (!out) {
-      set_err(err, err_len, os_error("cannot create", path));
-      return -1;
-    }
-    out.write(reinterpret_cast<const char*>(bytes.data()),
-              static_cast<std::streamsize>(bytes.size()));
-    out.close();
-    if (!out) {
-      set_err(err, err_len, os_error("cannot write", path));
+    std::string msg;
+    if (!write_file(path, rag::serialize(idx), msg)) {
+      set_err(err, err_len, msg);
       return -1;
     }
     return 0;

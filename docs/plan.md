@@ -293,6 +293,8 @@ Outcome of each review: finding, decision (fixed / won't fix / deferred), and wh
 | 2026-11-01 | Phase 2 (`/code-review medium engine/`) | `rag_builder_write` truncates and writes in place, so a failure part-way destroys the previous index | Deferred to 3.4: the indexer writes into a deploy build directory, not a live path, and write-then-rename belongs in the Go indexer that 3.4 creates |
 | 2026-11-01 | Phase 2 (`/code-review medium engine/`) | `bm25_topk` recomputes the average chunk length on every query | Won't fix: about 2,000 integer adds, estimated at no more than 1 µs of an 86 µs search (not measured); a cached copy would be state to keep in step |
 | 2026-11-01 | Phase 2 (`/code-review medium engine/`) | The builder briefly holds about 4× the vector data while writing | Won't fix: build time only, on the deploy machine, with a corpus expected under 2k chunks |
+| 2026-11-01 | Phase 2 (`/code-review medium engine/`) | The loader read the file one byte at a time through `istreambuf_iterator` | Fixed: one sized `fread`. `make bench-engine` load time for 2k × 512 went from 16.5 ms to 11.3 ms median (−32%). Bulk-copying the fixed sections as well measured no gain (12.1 vs 12.3 ms in a scratch timer), so it was reverted |
+| 2026-11-01 | Phase 2 (`/code-review medium engine/`) | Error messages read `errno` after iostream failures, which isn't guaranteed to be set, so a message could say "Success" | Not reproduced: writing to `/dev/full` reported "No space left on device". Switched to C stdio with the loader fix anyway, which does set `errno`, and added the `/dev/full` test as a regression guard (it passed before the change too) |
 
 ## Spike findings
 
