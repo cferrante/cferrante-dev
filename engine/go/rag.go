@@ -35,6 +35,15 @@ func (e *errBuf) err(op string) error {
 	return fmt.Errorf("rag: %s: %s", op, C.GoString(&e[0]))
 }
 
+// cPath converts a file path for C. C strings end at the first NUL, so a path
+// containing one would silently name a different file; reject it instead.
+func cPath(op, path string) (*C.char, error) {
+	if strings.IndexByte(path, 0) >= 0 {
+		return nil, fmt.Errorf("rag: %s: path contains a NUL byte", op)
+	}
+	return C.CString(path), nil
+}
+
 // Hit is one search result.
 type Hit struct {
 	ChunkID uint32
@@ -45,21 +54,25 @@ type Hit struct {
 // Close takes the write lock, so it waits for searches in flight and later
 // searches get ErrClosed instead of touching freed memory.
 type Index struct {
-	mu  sync.RWMutex
-	p   *C.rag_index
-	dim int
+	mu    sync.RWMutex
+	p     *C.rag_index
+	dim   int
+	count int // chunks: no search returns more hits
 }
 
 // Load reads and validates an index file. Call Close when done.
 func Load(path string) (*Index, error) {
-	cpath := C.CString(path)
+	cpath, err := cPath("load", path)
+	if err != nil {
+		return nil, err
+	}
 	defer C.free(unsafe.Pointer(cpath))
 	var e errBuf
 	p := C.rag_index_load(cpath, e.ptr(), errLen)
 	if p == nil {
 		return nil, e.err("load")
 	}
-	return &Index{p: p, dim: int(C.rag_index_dim(p))}, nil
+	return &Index{p: p, dim: int(C.rag_index_dim(p)), count: int(C.rag_index_count(p))}, nil
 }
 
 // Dim is the vector length the index expects.
@@ -67,18 +80,20 @@ func (ix *Index) Dim() int { return ix.dim }
 
 // Search returns up to k hits for chunks whose access bits intersect mask,
 // best first. text may be empty (vector search only); an all-zero vec means
-// keyword search only. vec must have Dim() finite values.
+// keyword search only. vec must have Dim() finite values. A NUL in text is
+// treated as a space, which is how the tokenizer would split it anyway.
 func (ix *Index) Search(vec []float32, text string, mask uint32, k int) ([]Hit, error) {
 	if len(vec) != ix.dim {
 		return nil, fmt.Errorf("rag: search: vector has %d values, index wants %d", len(vec), ix.dim)
 	}
+	// Size the output by what the index can return, not by the caller's k.
+	k = min(k, ix.count)
 	if k <= 0 {
 		return nil, nil
 	}
-	k = min(k, math.MaxInt32)
 	var ctext *C.char
 	if text != "" {
-		ctext = C.CString(text)
+		ctext = C.CString(strings.ReplaceAll(text, "\x00", " "))
 		defer C.free(unsafe.Pointer(ctext))
 	}
 	out := make([]C.rag_hit, k)
@@ -93,9 +108,9 @@ func (ix *Index) Search(vec []float32, text string, mask uint32, k int) ([]Hit, 
 	n := C.rag_search(ix.p, (*C.float)(unsafe.Pointer(&vec[0])), C.uint32_t(len(vec)), ctext,
 		C.uint32_t(mask), C.uint32_t(k), &out[0])
 	if n < 0 {
-		// The length is checked above, so the engine's only remaining reason is a
-		// NaN or infinite value (design §5).
-		return nil, errors.New("rag: search: vector has a non-finite value")
+		// The length is checked above, so this is a NaN or infinite value in vec
+		// (design §5) or, rarely, an internal error the engine caught.
+		return nil, errors.New("rag: search: engine rejected the query: non-finite vector value or internal error")
 	}
 	hits := make([]Hit, n)
 	for i := range hits {
@@ -157,7 +172,10 @@ func (b *Builder) Add(text string, vec []float32, access uint32) error {
 
 // Write writes the index file to path.
 func (b *Builder) Write(path string) error {
-	cpath := C.CString(path)
+	cpath, err := cPath("write", path)
+	if err != nil {
+		return err
+	}
 	defer C.free(unsafe.Pointer(cpath))
 	var e errBuf
 	if C.rag_builder_write(b.p, cpath, e.ptr(), errLen) != 0 {

@@ -5,6 +5,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -240,4 +241,58 @@ func TestCloseDuringSearches(t *testing.T) {
 	close(start)
 	ix.Close()
 	wg.Wait()
+}
+
+// Review finding: the output buffer was sized from k alone, so a huge k
+// allocated gigabytes. It must be sized by what the index can return.
+func TestHugeKAllocatesOnlyWhatCanBeReturned(t *testing.T) {
+	ix := load(t, writeFixture(t, public))
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	hits, err := ix.Search(query, "go", public, 10_000_000)
+	runtime.ReadMemStats(&after)
+	if err != nil || len(hits) != 3 {
+		t.Fatalf("hits %v, err %v; want 3 hits", ids(hits), err)
+	}
+	if d := after.TotalAlloc - before.TotalAlloc; d > 1<<20 {
+		t.Errorf("k = 1e7 on a 3-chunk index allocated %d bytes", d)
+	}
+}
+
+// Review finding: C.CString cuts a string at its first NUL, so a path with a
+// NUL silently named a different file.
+func TestPathsWithNULAreRejected(t *testing.T) {
+	dir := t.TempDir()
+	cut := filepath.Join(dir, "index.idx")
+	if _, err := Load(cut + "\x00.tmp"); err == nil || !strings.Contains(err.Error(), "contains a NUL byte") {
+		t.Errorf("Load: err = %v, want \"contains a NUL byte\"", err)
+	}
+	b, err := NewBuilder(2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b.Close()
+	if err := b.Add("x", []float32{1, 0}, public); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Write(cut + "\x00.tmp"); err == nil || !strings.Contains(err.Error(), "contains a NUL byte") {
+		t.Errorf("Write: err = %v, want \"contains a NUL byte\"", err)
+	}
+	if _, err := os.Stat(cut); !os.IsNotExist(err) {
+		t.Errorf("Write created %s from the cut-short path", cut)
+	}
+}
+
+// Review finding: query text was cut at its first NUL. The tokenizer treats
+// NUL as a separator, so the whole text must search as if NUL were a space.
+func TestQueryTextWithNULSearchesAllOfIt(t *testing.T) {
+	ix := load(t, writeFixture(t, public))
+	want, err := ix.Search([]float32{0, 0, 0, 0}, "go lambda", public, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := ix.Search([]float32{0, 0, 0, 0}, "go\x00lambda", public, 10)
+	if err != nil || !slices.Equal(got, want) {
+		t.Errorf("with NUL: %v (err %v), want %v", ids(got), err, ids(want))
+	}
 }
