@@ -69,6 +69,11 @@ func Run(ctx context.Context, c *groq.Client, model string) (Report, error) {
 		}
 		return rep, nil
 	}
+	if res1.StopReason != "tool_calls" {
+		// e.g. "length": the call's arguments may be cut off.
+		problem("turn 1: stopped with %q, want %q", res1.StopReason, "tool_calls")
+		return rep, nil
+	}
 
 	call := res1.ToolCalls[0]
 	rep.Tool = call.Function.Name

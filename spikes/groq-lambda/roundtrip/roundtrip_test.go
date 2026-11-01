@@ -148,3 +148,18 @@ func TestLookupProject(t *testing.T) {
 		t.Error("want an error for an unknown project")
 	}
 }
+
+// Review finding: a turn cut off mid-call (finish_reason "length") must be
+// reported as truncated, not as a tool with bad arguments.
+func TestRunReportsTruncatedToolCall(t *testing.T) {
+	srv := fakeGroq(t, sse(delta("reasoning", "Look it up."),
+		`{"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_abc","type":"function","function":{"name":"lookup_project","arguments":"{\"name\":\"cferr"}}]},"finish_reason":"length"}]}`), Codename)
+	rep, err := Run(context.Background(), &groq.Client{BaseURL: srv.URL, APIKey: "test"}, "m")
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	want := []string{`turn 1: stopped with "length", want "tool_calls"`}
+	if rep.OK || strings.Join(rep.Problems, "|") != strings.Join(want, "|") {
+		t.Errorf("OK = %v, problems = %q, want %q", rep.OK, rep.Problems, want)
+	}
+}
