@@ -167,17 +167,63 @@ int rag_search(const rag_index* idx,
                uint32_t access_mask,
                uint32_t k,
                rag_hit* out);
+
+/* Index builder, used by the Go indexer through cgo. Chunk ids are assigned in
+   add order, starting at 0. Each returns 0 on success, -1 on error (message in err). */
+typedef struct rag_builder rag_builder;        /* opaque */
+
+rag_builder* rag_builder_new(uint32_t dim, char* err, size_t err_len);
+int          rag_builder_add(rag_builder* b, const char* text,
+                             const float* vec, uint32_t access_bits,
+                             char* err, size_t err_len);
+int          rag_builder_write(const rag_builder* b, const char* path,
+                               char* err, size_t err_len);
+void         rag_builder_free(rag_builder* b);
 ```
 
-- **Index file** (built at deploy by `orchestrator/cmd/indexer`): versioned binary with a header
-  (`magic`, `version`, `dim`, `count`), then [normalized](concepts.md#cosine-similarity-and-dot-product) vectors,
-  [BM25](concepts.md#bm25) postings (an [inverted index](concepts.md#inverted-index)), and
-  per-chunk access bits. Chunk text and metadata live in a sidecar JSON loaded by Go.
+- **One owner for the format and the tokenizer.** The engine both builds and reads the index
+  file, and the same C++ tokenizer splits chunk text at build time and the query at search time.
+  The Go indexer (`orchestrator/cmd/indexer`) chunks and embeds, then hands each chunk to
+  `rag_builder_add`. If two implementations tokenized differently, keyword search would quietly
+  stop matching and nothing would crash.
+- **Tokenizer:** ASCII letters are lowercased; any byte that isn't an ASCII letter or digit
+  separates tokens, and so do the Unicode dashes U+2010–U+2015 and U+2212 (gpt-oss writes U+2011,
+  see [spike findings](plan.md#spike-findings)). Other non-ASCII bytes stay inside tokens, without
+  case folding. No stemming and no stop-word list: [BM25](concepts.md#bm25)'s IDF already
+  down-weights common words.
+- **Index file:** versioned, little-endian binary. Header: `magic`, `version`, `dim`, `count`,
+  section offsets and a CRC32 of everything after the header. Then
+  [normalized](concepts.md#cosine-similarity-and-dot-product) float32 vectors,
+  BM25 postings (an [inverted index](concepts.md#inverted-index)) with document lengths, and
+  per-chunk access bits. The file is read whole into memory (no mmap). Load checks the magic,
+  version, sizes and checksum before trusting any offset, and returns an error, never crashes,
+  on a wrong-version, truncated or corrupt file. Chunk text and metadata live in a sidecar JSON
+  loaded by Go.
 - **[Access bits](concepts.md#access-mask):** `0x1` public, `0x2` invitee. Public callers pass `0x1`; invitees `0x3`.
-- **Fusion:** [Reciprocal Rank Fusion](concepts.md#hybrid-search-and-rrf), `score = Σ 1/(60 + rank)` over the two result lists.
+  The mask is applied *before* ranking, so a private chunk can't take a public caller's slot.
+- **Search:** vector search is a brute-force dot product over the normalized vectors. BM25 uses
+  k1 = 1.2, b = 0.75. Each list contributes its top N = max(k, 50) chunks after the access mask.
+- **Fusion:** [Reciprocal Rank Fusion](concepts.md#hybrid-search-and-rrf), `score = Σ 1/(60 + rank)`
+  over the two lists (rank starts at 1; a chunk missing from a list adds nothing). The returned
+  `score` is the fused score.
+- **Edge cases:** an empty or null `query_text` (or one with no tokens) means vector search only;
+  an all-zero `query_vec` means BM25 only; both empty returns 0 hits. `dim` different from the
+  index's returns -1. `k` larger than the matching chunks returns fewer hits. Equal scores are
+  ordered by lower `chunk_id`, so results are deterministic.
+- **Errors at the boundary:** every ABI function is `noexcept` and catches all exceptions
+  internally, reporting -1 or `NULL` with a message. A C++ exception unwinding into Go would crash
+  the process.
 - **Memory ownership:** the caller allocates `out`; the engine never returns heap memory to Go,
-  so there is nothing for Go to free except the index.
-- **Thread safety:** `rag_search` is read-only and safe to call concurrently.
+  so there is nothing for Go to free except the index and the builder.
+- **Thread safety:** `rag_search` is read-only and safe to call concurrently. A builder is used
+  by one thread.
+- **Portability:** no architecture-specific code without a tested, benchmarked portable fallback.
+  Hot loops (such as `dot()`) use several independent accumulators so the compiler can vectorize
+  them on x86_64 and arm64 *without* `-ffast-math`; a single running sum is a dependency chain the
+  compiler must not reorder. Standard: C++20, built with GCC.
+- **Go binding** (`engine/go`): cgo compiles the engine sources directly (one `.cc` file in the
+  package includes `engine/src/*.cc`), so `go build` and `go test ./...` need no CMake step.
+  CMake builds the C++ tests (with AddressSanitizer and UBSan) and benchmarks.
 
 **Building for Lambda** (proven in spike 1.2): the Lambda binary is linked **fully static**
 (`-extldflags "-static"`, build tags `netgo,osusergo`), so it needs nothing from Amazon Linux
