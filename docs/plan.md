@@ -235,6 +235,9 @@ Any change from this plan: what changed, why, and which step.
 | 2026-11-01 | 2.6 | "SIMD path" means a portable multi-accumulator loop the compiler vectorizes, not intrinsics | Keeps the portability rule; a single running sum can't be vectorized without `-ffast-math`, which is why the naive gate is expected to fail |
 | 2026-11-01 | 2.7 | `engine/go` compiles the engine sources through cgo instead of linking a CMake-built library | `go test ./...` and the Lambda build stay one command; CMake remains for C++ tests, sanitizers and benchmarks |
 | 2026-11-01 | 2.3 | BM25's IDF form, single counting of repeated query terms, and corpus-wide N and average length added to [design §5](design.md#5-retrieval-engine-c) | "Hand-computed scores" need one exact formula; BM25 has several common IDF variants, and Lucene's can't go negative |
+| 2026-11-01 | 2.5 | Header has a term count and payload length instead of section offsets; [design §5](design.md#5-retrieval-engine-c) updated | Sections are read in order with sizes from the counts, so there are no offsets that could point outside the file |
+| 2026-11-01 | 2.5 | `rag_search` returns -1 for a non-finite query, the loader rejects non-finite vectors, and the builder rejects access bits of 0 | A NaN score breaks `partial_sort`'s strict weak ordering (undefined behaviour); a chunk with no access bits can never be returned, so it's a caller bug |
+| 2026-11-01 | 2.5 | Added a second corruption loop: every single-bit flip in the payload *with the checksum recomputed* must not crash loading or searching | The CRC catches accidental damage, which would leave the field checks behind it untested; this loop exercises them as a crafted file would |
 
 ## Code review log
 
@@ -268,9 +271,6 @@ Outcome of each review: finding, decision (fixed / won't fix / deferred), and wh
 | 2026-11-01 | 2.5 | Two test bugs crashed the run against the stubs (`strlen` on an unterminated buffer, indexing an empty file) and hid the other failures | Fixed: `memchr` before `strlen`, `REQUIRE` a real file before patching bytes |
 | 2026-11-01 | 2.5 | Breaking the trailing-bytes check failed no test: appending a byte trips the payload-length check first | Fixed: a test that also updates length and checksum; it catches the break |
 | 2026-11-01 | 2.5 | "No exception escapes the ABI" can't be provoked from a test without fault injection | Checked by reading: every ABI function is `noexcept` with `catch (...)`, so even a missed catch terminates instead of unwinding into Go |
-| 2026-11-01 | 2.5 | Header has a term count and payload length instead of section offsets; [design §5](design.md#5-retrieval-engine-c) updated | Sections are read in order with sizes from the counts, so there are no offsets that could point outside the file |
-| 2026-11-01 | 2.5 | `rag_search` returns -1 for a non-finite query, the loader rejects non-finite vectors, and the builder rejects access bits of 0 | A NaN score breaks `partial_sort`'s strict weak ordering (undefined behaviour); a chunk with no access bits can never be returned, so it's a caller bug |
-| 2026-11-01 | 2.5 | Added a second corruption loop: every single-bit flip in the payload *with the checksum recomputed* must not crash loading or searching | The CRC catches accidental damage, which would leave the field checks behind it untested; this loop exercises them as a crafted file would |
 
 ## Spike findings
 
