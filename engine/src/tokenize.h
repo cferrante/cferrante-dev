@@ -10,7 +10,8 @@ namespace rag {
 
 // Splits text into tokens. ASCII letters are lowercased; any other ASCII byte
 // that isn't a letter or digit separates tokens, and so do the Unicode dashes
-// U+2010..U+2015 and U+2212. Every other non-ASCII byte stays inside its token
+// U+2010..U+2015 and U+2212 and the Unicode spaces U+00A0, U+2000..U+200A,
+// U+202F, U+205F and U+3000. Every other non-ASCII byte stays inside its token
 // unchanged (no Unicode case folding). Never reads past the end of text, even
 // when it ends partway through a UTF-8 sequence.
 std::vector<std::string> tokenize(std::string_view text);
