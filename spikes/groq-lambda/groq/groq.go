@@ -218,11 +218,11 @@ func (c *Client) Stream(ctx context.Context, req Request, onEvent func(Event) er
 		// OpenAI's final usage chunk. Either fills the same fields.
 		for _, u := range []*wireUsage{ch.Usage, ch.XGroq.Usage} {
 			if u != nil {
-				res.TokensIn, res.TokensOut = u.PromptTokens, u.CompletionTokens
-				res.ReasoningTokens = u.CompletionDetails.ReasoningTokens
-				if u.PromptDetails.CachedTokens > 0 {
-					res.CachedTokens = u.PromptDetails.CachedTokens
-				}
+				// Merge: a copy that omits a field must not zero it.
+				setIfPositive(&res.TokensIn, u.PromptTokens)
+				setIfPositive(&res.TokensOut, u.CompletionTokens)
+				setIfPositive(&res.ReasoningTokens, u.CompletionDetails.ReasoningTokens)
+				setIfPositive(&res.CachedTokens, u.PromptDetails.CachedTokens)
 			}
 		}
 		for _, choice := range ch.Choices {
@@ -237,6 +237,12 @@ func (c *Client) Stream(ctx context.Context, req Request, onEvent func(Event) er
 					return res, err
 				}
 			}
+			if len(d.ToolCalls) > 0 && !first.IsZero() {
+				// Arguments are output tokens too: they end the span
+				// tokens/s divides by. They don't start it: TTFT is the
+				// first reasoning or text token, per the definition.
+				last = time.Now()
+			}
 			for _, tc := range d.ToolCalls {
 				for len(calls) <= tc.Index {
 					calls = append(calls, &ToolCall{})
@@ -248,7 +254,10 @@ func (c *Client) Stream(ctx context.Context, req Request, onEvent func(Event) er
 				if tc.Type != "" {
 					call.Type = tc.Type
 				}
-				call.Function.Name += tc.Function.Name
+				if call.Function.Name == "" {
+					// Set once: some providers repeat the name in every delta.
+					call.Function.Name = tc.Function.Name
+				}
 				call.Function.Arguments += tc.Function.Arguments
 			}
 			if choice.FinishReason != "" {
@@ -275,6 +284,12 @@ func (c *Client) Stream(ctx context.Context, req Request, onEvent func(Event) er
 		res.Generation = last.Sub(first)
 	}
 	return res, nil
+}
+
+func setIfPositive(dst *int, v int) {
+	if v > 0 {
+		*dst = v
+	}
 }
 
 type streamOptions struct {

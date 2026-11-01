@@ -211,3 +211,46 @@ func TestStreamParsesLiveRecording(t *testing.T) {
 		t.Errorf("result = %+v", res)
 	}
 }
+
+func serve(t *testing.T, body string) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, body)
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// Review finding: usage comes twice; a later copy missing a field must not
+// zero what an earlier copy reported.
+func TestStreamMergesUsageCopies(t *testing.T) {
+	srv := serve(t, `data: {"choices":[{"index":0,"delta":{"content":"hi"},"finish_reason":"stop"}],"x_groq":{"usage":{"prompt_tokens":10,"completion_tokens":5,"completion_tokens_details":{"reasoning_tokens":3}}}}`+"\n\n"+
+		`data: {"choices":[],"usage":{"prompt_tokens":10,"completion_tokens":5}}`+"\n\ndata: [DONE]\n\n")
+	_, res := collect(t, &Client{BaseURL: srv.URL, APIKey: "test"}, Request{Model: "m"})
+	if res.TokensIn != 10 || res.TokensOut != 5 || res.ReasoningTokens != 3 {
+		t.Errorf("usage = in %d out %d reasoning %d, want 10 5 3", res.TokensIn, res.TokensOut, res.ReasoningTokens)
+	}
+}
+
+// Review finding: some providers repeat the function name in every delta.
+func TestStreamKeepsRepeatedToolNameOnce(t *testing.T) {
+	srv := serve(t, `data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"c1","type":"function","function":{"name":"lookup_project","arguments":"{\"name\":"}}]}}]}`+"\n\n"+
+		`data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"name":"lookup_project","arguments":"\"x\"}"}}]},"finish_reason":"tool_calls"}]}`+"\n\ndata: [DONE]\n\n")
+	_, res := collect(t, &Client{BaseURL: srv.URL, APIKey: "test"}, Request{Model: "m"})
+	if len(res.ToolCalls) != 1 || res.ToolCalls[0].Function.Name != "lookup_project" ||
+		res.ToolCalls[0].Function.Arguments != `{"name":"x"}` {
+		t.Errorf("tool calls = %+v", res.ToolCalls)
+	}
+}
+
+// Review finding: tool-call arguments are output tokens, so their arrival
+// ends the generation span; otherwise tokens/s counts them in no time.
+func TestStreamTimesToolCallChunks(t *testing.T) {
+	const gap = 60 * time.Millisecond
+	srv := replay(t, "testdata/tool_call.sse", gap)
+	_, res := collect(t, &Client{BaseURL: srv.URL, APIKey: "test"}, Request{Model: "m"})
+	// One reasoning chunk, then two tool-call chunks: two gaps.
+	if res.Generation < 2*gap*8/10 {
+		t.Errorf("Generation = %v, want about %v (through the last tool-call chunk)", res.Generation, 2*gap)
+	}
+}
