@@ -35,7 +35,8 @@ func TestSummarizePassesWhenAllRunsOK(t *testing.T) {
 	if !pass {
 		t.Errorf("pass = false for 3 good runs of 3:\n%s", out)
 	}
-	for _, want := range []string{"TTFT turn 1", "p50 200", "tokens/s turn 2", "p50 500", "PASS"} {
+	// Throughput's slow tail is its low end: tokens/s reports p5, not p95.
+	for _, want := range []string{"TTFT turn 1", "p50 200", "tokens/s turn 2", "p50 500  p5 400", "PASS"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("summary lacks %q:\n%s", want, out)
 		}

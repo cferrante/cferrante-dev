@@ -63,7 +63,9 @@ func summarize(reps []roundtrip.Report, want int) (string, bool) {
 	fmt.Fprintf(&b, "\n%d runs, %d ok (statistics over ok runs)\n", len(reps), len(reps)-bad)
 	line("TTFT turn 1", "ms", ttft1)
 	line("TTFT turn 2", "ms", ttft2)
-	line("tokens/s turn 2", "", tps2)
+	// Higher is better, so the slow tail is the low end: p5 and p1.
+	fmt.Fprintf(&b, "%-16s p50 %.0f  p5 %.0f  p1 %.0f\n", "tokens/s turn 2",
+		percentile(tps2, .50), percentile(tps2, .05), percentile(tps2, .01))
 
 	pass := bad == 0 && len(reps) >= want
 	switch {
