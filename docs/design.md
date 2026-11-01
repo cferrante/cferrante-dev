@@ -467,7 +467,12 @@ Categories: `jailbreak`, `roleplay_escape`, `prompt_extraction`, `indirect_injec
 - Config via environment variables ([12-factor](concepts.md#12-factor-config)): model ids, limits, region, Neon host.
 - Secrets (Groq API key, Neon password) in **SSM Parameter Store** SecureString, read once per
   Lambda cold start and cached in memory.
-- Locally: a git-ignored `.env` file; `make dev` defaults to Ollama so no secrets are needed.
+- Locally: a git-ignored `.env` file, documented by the committed `.env.example`; `make dev`
+  defaults to Ollama so no secrets are needed. Every setting is an environment variable read by
+  `orchestrator/config`, and a command-line flag overrides it: **flag > shell environment >
+  `.env` > built-in default**. The `.env` loader never modifies the process environment, so a
+  variable exported in the shell always wins. An invalid value (e.g. `EMBED_DIM=abc`) stops
+  startup with a message naming the variable, rather than silently using the default.
 
 ## 12. Open decisions
 
