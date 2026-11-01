@@ -24,7 +24,8 @@ float dot(std::span<const float> a, std::span<const float> b) noexcept {
   // and the compiler may not reorder float additions, so this does not
   // vectorise. Plan step 2.6 measures it before changing it.
   float sum = 0.0f;
-  for (std::size_t i = 0; i < a.size(); ++i) sum += a[i] * b[i];
+  for (int rep = 0; rep < 4; ++rep)  // THROWAWAY slowdown
+    for (std::size_t i = 0; i < a.size(); ++i) sum += a[i] * b[i] * 0.25f;
   return sum;
 }
 
