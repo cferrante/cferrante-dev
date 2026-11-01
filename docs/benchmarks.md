@@ -109,8 +109,11 @@ GCC 15.2 `-O3`, no `-march`.
 
 ### CI runner (GitHub Actions `ubuntu-latest`)
 
-Same benchmark as the local table, run by `make bench-engine` in the Test job. Shared runners
-vary, so the gate has wide headroom. CPU model not recorded.
+Same benchmark as the local table, run by `make bench-engine` in the Test job. **Shared runners
+vary by about 2× for the same code:** re-running the 2.6 commit later gave vector-only p50
+0.108 ms against 0.062 ms on its first run. So compare CI rows only with care, and use the local
+table for before/after decisions. The gate keeps wide headroom for this reason. Runs before #38
+didn't record the CPU; `rag_bench` now prints it.
 
 | Date | Git sha | Benchmark | p50 | p95 | p99 | Notes |
 |---|---|---|---|---|---|---|
@@ -118,6 +121,8 @@ vary, so the gate has wide headroom. CPU model not recorded.
 | 2026-11-01 | #32 (throwaway) | C++ hybrid, single-sum `dot()` slowed 4× on purpose | 3.352 ms | 3.381 ms | 3.439 ms | Gate failed CI, as intended |
 | 2026-11-01 | #33 | **C++ hybrid, 2k × 512, 8-sum `dot()`** | **0.086 ms** | **0.094 ms** | **0.099 ms** | Shipped; gate green with 10× headroom |
 | 2026-11-01 | #33 | C++ vector-only, 2k × 512, 8-sum | 0.060 ms | 0.067 ms | 0.069 ms | |
+| 2026-11-01 | #33 (re-run later) | C++ hybrid, 2k × 512, 8-sum `dot()` | 0.142 ms | 0.156 ms | 0.164 ms | Same commit as the row above, re-run on a later runner: runner variance, not code. Vector-only 0.108 ms p50 |
+| 2026-11-01 | #37 | C++ hybrid, 2k × 512, visible-only BM25 statistics | 0.198 ms | 0.215 ms | 0.222 ms | Runs since #34 sit at 0.17–0.20 ms p50, with vector-only (untouched by #37) at 0.13–0.15 ms; #37 itself moved hybrid by about 0.004 ms against #36 |
 
 ### AWS Lambda
 

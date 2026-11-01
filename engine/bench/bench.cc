@@ -16,6 +16,7 @@
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <random>
 #include <string>
 #include <vector>
@@ -132,6 +133,16 @@ Percentiles measure(const char* name, const Corpus& c, bool with_text, int calls
   return {at(0.50), at(0.95), at(0.99)};
 }
 
+// CI runners vary by about 2x between hosts (see benchmarks.md), so every run
+// names the CPU it measured on.
+std::string cpu_model() {
+  std::ifstream in("/proc/cpuinfo");
+  for (std::string line; std::getline(in, line);) {
+    if (line.rfind("model name", 0) == 0) return line.substr(line.find(':') + 2);
+  }
+  return "unknown";
+}
+
 void row(const char* name, std::uint32_t chunks, const Percentiles& p) {
   std::printf("%-12s %6u x %u   p50 %7.3f ms   p95 %7.3f ms   p99 %7.3f ms\n", name, chunks, kDim,
               p.p50, p.p95, p.p99);
@@ -140,6 +151,7 @@ void row(const char* name, std::uint32_t chunks, const Percentiles& p) {
 }  // namespace
 
 int main(int argc, char** argv) {
+  std::printf("cpu: %s\n", cpu_model().c_str());
   if (argc > 1 && std::strcmp(argv[1], "--scale") == 0) {
     for (std::uint32_t n : {1000u, 2000u, 5000u, 10000u, 20000u, 50000u}) {
       auto c = make_corpus(n);
