@@ -33,9 +33,7 @@ code=$(curl -s -o /dev/null -w '%{http_code}' \
 [[ $code == 200 ]] || die "Groq didn't accept the key (HTTP $code); nothing stored"
 
 act "storing it as a SecureString"
-project ssm put-parameter --cli-input-json file:///dev/stdin >/dev/null <<<"$(printf \
-  '{"Name":"%s","Type":"SecureString","Tier":"Standard","Overwrite":true,"Value":"%s","Description":"Groq API key for cferrante-dev"}' \
-  "$GROQ_KEY_PARAM" "$key")"
+put_secure_string "$GROQ_KEY_PARAM" "$key" "Groq API key for cferrante-dev"
 unset key
 
 # Confirm it round-trips, showing only the prefix and length.
