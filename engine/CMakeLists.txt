@@ -44,3 +44,8 @@ target_include_directories(rag_tests SYSTEM PRIVATE third_party)
 
 enable_testing()
 add_test(NAME rag_tests COMMAND rag_tests)
+
+# Benchmark (plan step 2.6). Run from a Release build: `make bench-engine`.
+add_executable(rag_bench bench/bench.cc)
+target_link_libraries(rag_bench PRIVATE rag)
+target_include_directories(rag_bench SYSTEM PRIVATE third_party)

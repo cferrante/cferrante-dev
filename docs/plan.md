@@ -111,7 +111,7 @@ rather than a rewrite.
 | **2.3** Tokenizer + BM25 over an inverted index | Tokenizer cases (case, punctuation, U+2011 splits, non-ASCII kept) and hand-computed scores for a 3-doc fixture fail | Tokens as specified; scores match to 1e-5 **✅ 2026-11-01** |
 | **2.4** Reciprocal Rank Fusion and hybrid search, with the [design §5](design.md#5-retrieval-engine-c) edge cases | Fixture where fusion must reorder results; empty text → vector only; zero vector → BM25 only | Matches hand-computed ranking; every edge case tested **✅ 2026-11-01** |
 | **2.5** Versioned index file and the full C ABI: builder (`rag_builder_*`), `rag_index_load`, `rag_search` | Round-trip test; loading a wrong-version, truncated or corrupt file must return an error, not crash | Round-trip exact; under ASan, a loop rejects every truncation length and a flipped bit at every byte; no exception escapes the ABI **✅ 2026-11-01** |
-| **2.6** Benchmarks (nanobench, 2k × 512 chunks generated from a fixed seed) + a **pure-Go baseline** | CI gate "p99 < 1 ms" fails on the single-sum `dot()` (estimated ~1.3 ms on CI, to be measured) | `dot()` rewritten with independent accumulators the compiler vectorizes; gate green; C++ vs Go numbers recorded honestly in [benchmarks](benchmarks.md#results) |
+| **2.6** Benchmarks (nanobench, 2k × 512 chunks generated from a fixed seed) + a **pure-Go baseline** | CI gate "p99 < 1 ms" fails on the single-sum `dot()` (estimated ~1.3 ms on CI, to be measured) | `dot()` rewritten with independent accumulators the compiler vectorizes; gate green; C++ vs Go numbers recorded honestly in [benchmarks](benchmarks.md#results) **✅ 2026-11-01** (gate didn't fail first; see deviations) |
 | **2.7** Go binding package (`engine/go`), compiling the engine sources through cgo | Go test calling `rag_search` via cgo fails (no binding) | Passes with plain `go test`, including `-race` with concurrent searches; indexer-style build → load → search round trip through Go |
 
 If the 2.6 gate passes on the first run, the gate is proven instead with a deliberate slowdown,
@@ -238,6 +238,9 @@ Any change from this plan: what changed, why, and which step.
 | 2026-11-01 | 2.5 | Header has a term count and payload length instead of section offsets; [design §5](design.md#5-retrieval-engine-c) updated | Sections are read in order with sizes from the counts, so there are no offsets that could point outside the file |
 | 2026-11-01 | 2.5 | `rag_search` returns -1 for a non-finite query, the loader rejects non-finite vectors, and the builder rejects access bits of 0 | A NaN score breaks `partial_sort`'s strict weak ordering (undefined behaviour); a chunk with no access bits can never be returned, so it's a caller bug |
 | 2026-11-01 | 2.5 | Added a second corruption loop: every single-bit flip in the payload *with the checksum recomputed* must not crash loading or searching | The CRC catches accidental damage, which would leave the field checks behind it untested; this loop exercises them as a crafted file would |
+| 2026-11-01 | 2.6 | The gate did not fail first: single-sum `dot()` passed on CI (hybrid p99 0.481 ms, throwaway draft #32). Proven instead by a deliberate 4× slowdown, which failed CI at p99 3.439 ms | My ~1.3 ms estimate was wrong. The planned fallback, recorded here as promised. `dot()` was still vectorised, because it measured 3× faster (CI p99 0.099 ms) |
+| 2026-11-01 | 2.6 | Benchmark corpus generated in code from a fixed seed, not files in `engine/testdata/`; [benchmarks](benchmarks.md#methodology) methodology updated | Deterministic and nothing large committed, as the Phase 2 plan already said; the methodology text predated that |
+| 2026-11-01 | 2.6 | Benchmark times `rag_search` through the C ABI on a file-loaded index, and the Go baseline covers vector top-k only, with the same 8-sum loop | Measures what the orchestrator will call; a like-for-like algorithm makes it a language comparison. Hybrid BM25 in Go would double the work for no decision it informs |
 
 ## Code review log
 
@@ -271,6 +274,9 @@ Outcome of each review: finding, decision (fixed / won't fix / deferred), and wh
 | 2026-11-01 | 2.5 | Two test bugs crashed the run against the stubs (`strlen` on an unterminated buffer, indexing an empty file) and hid the other failures | Fixed: `memchr` before `strlen`, `REQUIRE` a real file before patching bytes |
 | 2026-11-01 | 2.5 | Breaking the trailing-bytes check failed no test: appending a byte trips the payload-length check first | Fixed: a test that also updates length and checksum; it catches the break |
 | 2026-11-01 | 2.5 | "No exception escapes the ABI" can't be provoked from a test without fault injection | Checked by reading: every ABI function is `noexcept` with `catch (...)`, so even a missed catch terminates instead of unwinding into Go |
+| 2026-11-01 | 2.6 | Self-found: a C++ result row nearly recorded the 16-sum build as the 8-sum one; the Release binary hadn't been rebuilt after the variant comparison (0.44 ms instead of 0.12 ms) | Caught by comparing with the earlier run; every recorded number comes from `make bench-engine`, which rebuilds first |
+| 2026-11-01 | 2.6 | Go baseline: breaking the trim so k + 1 hits came back failed no test, because every fixture ended with a trimming insertion | Fixed: an ascending-scores case; it catches the break |
+| 2026-11-01 | 2.6 | Process: `gh pr close --delete-branch` on the throwaway also deleted the local branch | Recovered the commit from the reflog; nothing lost |
 
 ## Spike findings
 

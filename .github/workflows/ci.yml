@@ -25,6 +25,8 @@ jobs:
           go-version-file: go.mod
       - run: make lint
       - run: make test
+      # Retrieval latency gate (plan step 2.6): fails if hybrid p99 >= 1 ms.
+      - run: make bench-engine
 
   doc-links:
     name: Doc links
