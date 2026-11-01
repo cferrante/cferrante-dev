@@ -19,6 +19,8 @@ endif()
 add_library(rag STATIC
   src/vec.cc
   src/topk.cc
+  src/tokenize.cc
+  src/bm25.cc
 )
 target_include_directories(rag PUBLIC include src)
 
@@ -26,6 +28,8 @@ add_executable(rag_tests
   tests/main.cc
   tests/vec_test.cc
   tests/topk_test.cc
+  tests/tokenize_test.cc
+  tests/bm25_test.cc
 )
 target_link_libraries(rag_tests PRIVATE rag)
 target_include_directories(rag_tests SYSTEM PRIVATE third_party)
