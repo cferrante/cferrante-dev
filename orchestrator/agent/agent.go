@@ -174,11 +174,26 @@ func narrate(chunks []Chunk) string {
 	if len(chunks) == 0 {
 		return "No passages matched; I'll say so rather than guess."
 	}
-	titles := make([]string, len(chunks))
-	for i, c := range chunks {
-		titles[i] = c.Title
+	// One entry per document, in first-seen order, with a count when a
+	// document supplied several passages.
+	var titles []string
+	count := map[string]int{}
+	for _, c := range chunks {
+		if count[c.Title] == 0 {
+			titles = append(titles, c.Title)
+		}
+		count[c.Title]++
 	}
-	return fmt.Sprintf("Found %d passages: %s.", len(chunks), strings.Join(titles, ", "))
+	for i, t := range titles {
+		if n := count[t]; n > 1 {
+			titles[i] = fmt.Sprintf("%s (%d passages)", t, n)
+		}
+	}
+	noun := "passages"
+	if len(chunks) == 1 {
+		noun = "passage"
+	}
+	return fmt.Sprintf("Found %d %s: %s.", len(chunks), noun, strings.Join(titles, ", "))
 }
 
 func inferenceDetail(r model.Result, elapsed time.Duration) map[string]any {
