@@ -157,6 +157,7 @@ typedef struct { uint32_t chunk_id; float score; } rag_hit;
 
 rag_index* rag_index_load(const char* path, char* err, size_t err_len);
 void       rag_index_free(rag_index* idx);
+uint32_t   rag_index_dim(const rag_index* idx);   /* 0 for NULL */
 
 /* Hybrid vector + BM25 search. Only chunks whose access bits intersect access_mask
    are considered, so private chunks never leave the engine for public callers.
@@ -228,9 +229,14 @@ void         rag_builder_free(rag_builder* b);
   Hot loops (such as `dot()`) use several independent accumulators so the compiler can vectorize
   them on x86_64 and arm64 *without* `-ffast-math`; a single running sum is a dependency chain the
   compiler must not reorder. Standard: C++20, built with GCC.
-- **Go binding** (`engine/go`): cgo compiles the engine sources directly (one `.cc` file in the
-  package includes `engine/src/*.cc`), so `go build` and `go test ./...` need no CMake step.
-  CMake builds the C++ tests (with AddressSanitizer and UBSan) and benchmarks.
+- **Go binding** (`engine/go`, package `rag` since `go` is a keyword): cgo compiles the engine
+  sources directly (`engine.cc` includes `engine/src/*.cc`), so `go build` and `go test ./...`
+  need no CMake step; CMake builds the C++ tests (with AddressSanitizer and UBSan) and
+  benchmarks. `Index` guards its C pointer with a read-write lock: searches share it, and `Close`
+  waits for them, so a search after `Close` gets `ErrClosed` instead of reading freed memory.
+  The binding checks vector length itself so errors name the problem, rejects text containing a
+  NUL byte (C strings would cut it short), and leaves every other rule to the engine. A fully
+  static test binary passes `check-glibc.sh`.
 
 **Building for Lambda** (proven in spike 1.2): the Lambda binary is linked **fully static**
 (`-extldflags "-static"`, build tags `netgo,osusergo`), so it needs nothing from Amazon Linux

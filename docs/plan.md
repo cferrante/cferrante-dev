@@ -90,6 +90,9 @@ before Phase 2. Cost: $0 (free tiers; spike resources torn down afterwards).
 
 ## Phase 2 — Retrieval engine, C++ ($0)
 
+**✅ Done 2026-11-01** (PRs #26–#31, #33 and the 2.7 PR). Hybrid search p99 0.099 ms on the CI
+runner against a 1 ms gate; see [benchmarks](benchmarks.md#results).
+
 Built with CMake (C++20, GCC), tested with doctest, benchmarked with nanobench. Everything here
 runs locally and in CI. The contract is [design §5](design.md#5-retrieval-engine-c), including
 the tokenizer, file format, edge cases and builder ABI.
@@ -112,7 +115,7 @@ rather than a rewrite.
 | **2.4** Reciprocal Rank Fusion and hybrid search, with the [design §5](design.md#5-retrieval-engine-c) edge cases | Fixture where fusion must reorder results; empty text → vector only; zero vector → BM25 only | Matches hand-computed ranking; every edge case tested **✅ 2026-11-01** |
 | **2.5** Versioned index file and the full C ABI: builder (`rag_builder_*`), `rag_index_load`, `rag_search` | Round-trip test; loading a wrong-version, truncated or corrupt file must return an error, not crash | Round-trip exact; under ASan, a loop rejects every truncation length and a flipped bit at every byte; no exception escapes the ABI **✅ 2026-11-01** |
 | **2.6** Benchmarks (nanobench, 2k × 512 chunks generated from a fixed seed) + a **pure-Go baseline** | CI gate "p99 < 1 ms" fails on the single-sum `dot()` (estimated ~1.3 ms on CI, to be measured) | `dot()` rewritten with independent accumulators the compiler vectorizes; gate green; C++ vs Go numbers recorded honestly in [benchmarks](benchmarks.md#results) **✅ 2026-11-01** (gate didn't fail first; see deviations) |
-| **2.7** Go binding package (`engine/go`), compiling the engine sources through cgo | Go test calling `rag_search` via cgo fails (no binding) | Passes with plain `go test`, including `-race` with concurrent searches; indexer-style build → load → search round trip through Go |
+| **2.7** Go binding package (`engine/go`), compiling the engine sources through cgo | Go test calling `rag_search` via cgo fails (no binding) | Passes with plain `go test`, including `-race` with concurrent searches; indexer-style build → load → search round trip through Go **✅ 2026-11-01** |
 
 If the 2.6 gate passes on the first run, the gate is proven instead with a deliberate slowdown,
 and that is recorded as a deviation.
@@ -241,6 +244,8 @@ Any change from this plan: what changed, why, and which step.
 | 2026-11-01 | 2.6 | The gate did not fail first: single-sum `dot()` passed on CI (hybrid p99 0.481 ms, throwaway draft #32). Proven instead by a deliberate 4× slowdown, which failed CI at p99 3.439 ms | My ~1.3 ms estimate was wrong. The planned fallback, recorded here as promised. `dot()` was still vectorised, because it measured 3× faster (CI p99 0.099 ms) |
 | 2026-11-01 | 2.6 | Benchmark corpus generated in code from a fixed seed, not files in `engine/testdata/`; [benchmarks](benchmarks.md#methodology) methodology updated | Deterministic and nothing large committed, as the Phase 2 plan already said; the methodology text predated that |
 | 2026-11-01 | 2.6 | Benchmark times `rag_search` through the C ABI on a file-loaded index, and the Go baseline covers vector top-k only, with the same 8-sum loop | Measures what the orchestrator will call; a like-for-like algorithm makes it a language comparison. Hybrid BM25 in Go would double the work for no decision it informs |
+| 2026-11-01 | 2.7 | Go package is named `rag` (directory `engine/go`), and the C ABI gained `rag_index_dim()`; [design §5](design.md#5-retrieval-engine-c) updated | `go` is a keyword, so it can't be a package name. Go needed the index's dimension, and reading it from the file header would have given the format a second owner |
+| 2026-11-01 | 2.7 | `Index` holds a read-write lock so `Close` during searches is safe; text with a NUL byte is rejected | Without the lock, a search racing `Close` reads freed C memory (the race detector reported it when the lock was removed on purpose). `C.CString` silently truncates at NUL |
 
 ## Code review log
 
@@ -277,6 +282,10 @@ Outcome of each review: finding, decision (fixed / won't fix / deferred), and wh
 | 2026-11-01 | 2.6 | Self-found: a C++ result row nearly recorded the 16-sum build as the 8-sum one; the Release binary hadn't been rebuilt after the variant comparison (0.44 ms instead of 0.12 ms) | Caught by comparing with the earlier run; every recorded number comes from `make bench-engine`, which rebuilds first |
 | 2026-11-01 | 2.6 | Go baseline: breaking the trim so k + 1 hits came back failed no test, because every fixture ended with a trimming insertion | Fixed: an ascending-scores case; it catches the break |
 | 2026-11-01 | 2.6 | Process: `gh pr close --delete-branch` on the throwaway also deleted the local branch | Recovered the commit from the reflog; nothing lost |
+| 2026-11-01 | 2.7 | Self-found: my first `Load` read `dim` from the file header in Go, duplicating the format | Fixed: `rag_index_dim()` in the C ABI, test first |
+| 2026-11-01 | 2.7 | Self-found: a Go-side NaN check duplicated the engine's rule | Removed; the engine owns it, and Go maps its -1 to a clear message since the length is already checked |
+| 2026-11-01 | 2.7 | Removing the Go length check failed no test: the engine rejects a wrong length too, and the test only asked for some error | Fixed: the test now checks each error names its cause; it catches the break. Six breaks in total, all caught, including a `DATA RACE` report and a glibc double-free abort |
+| 2026-11-01 | 2.7 | Verified beyond the plan: the binding built fully static (`netgo,osusergo`, `-extldflags -static`) passes its tests and spike 1.2's `check-glibc.sh` | Confirms the engine (iostreams, `<filesystem>`) keeps the Lambda build static |
 
 ## Spike findings
 
