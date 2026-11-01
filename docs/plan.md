@@ -135,7 +135,7 @@ wraps it for Lambda. No new Go dependencies.
 | Step | Test that must fail first | Done when |
 |---|---|---|
 | **3.1** SSE writer enforcing the [contract rules](design.md#3-streaming-protocol-sse), with an injectable clock | Tests: unmatched `step_start`, event after `done`, missing keep-alive (fake clock), concurrent writers | All four contract rules enforced; `-race` clean with the keep-alive and the agent writing at once **✅ 2026-11-01** |
-| **3.2** `Model` interface, fake model, router with fallback-before-first-token and a 5 s first-token timeout | Test: primary returns 429 → fallback used; error *after* first token → error reported, no fallback; primary silent past the timeout → fallback | All three behaviours proven |
+| **3.2** `Model` interface, fake model, router with fallback-before-first-token and a 5 s first-token timeout | Test: primary returns 429 → fallback used; error *after* first token → error reported, no fallback; primary silent past the timeout → fallback | All three behaviours proven **✅ 2026-11-01** |
 | **3.3** The answer turn: `Retriever` interface (engine binding behind it), `ConversationStore` (in memory), prompt with numbered context, streaming, citations, turn limits | With fake model and retriever: events arrive as `step_start(retrieval)`, `step_end`, `thought`, `token`, `citation`, `done`; a `[2]` split across chunks yields one citation; an out-of-range `[9]` yields none; a cancelled turn still closes every step | The full turn works against fakes |
 | **3.4** Indexer CLI: corpus front matter, chunking (our own splitter: headings, paragraphs, then sentence boundaries, with overlap), embedding via interface (fake embedder in tests), index + sidecar written atomically | Test on a fixture corpus: expected chunk ids, boundaries and access bits; a missing `access` key is an error; a failed write leaves no file | Index loads in the engine and finds known chunks. Decide the deferred Unicode-space tokenizer question against real corpus text |
 | **3.5** `make dev`: local HTTP server, SSE over Ollama via `model/oai` (the spike 1.5 client, moved and shared with Groq); a small reasoning model such as `qwen3:4b` (~2.6 GB) and `nomic-embed-text` (~0.3 GB); **disk check first** | Recorded Ollama stream replay: reasoning and text arrive as separate events; smoke test: `curl -N localhost` gets `thought`, `token`, `done` in order | Works end to end on the laptop, with click-through steps |
@@ -266,6 +266,8 @@ Any change from this plan: what changed, why, and which step.
 | 2026-11-01 | 3.3 | Conversation history comes from a server-side `ConversationStore`, never the browser; the turn has limits (3 tool rounds, a deadline) | Browser-sent history could carry a forged assistant turn; an unbounded loop costs tokens and could break the stream contract on cancel |
 | 2026-11-01 | 3.4 | Corpus format specified (front matter parsed by our own parser, `doc-slug#heading` ids, sidecar JSON), and the index is written atomically | The indexer needs an input contract, the golden files already use these ids, and the atomic write resolves review finding #5 |
 | 2026-11-01 | 3.5 | Groq and Ollama share one package, `model/oai`; `Request.ResponseSchema` is `json.RawMessage` | One client for both OpenAI-compatible APIs, as decided on 2026-11-01; a schema type would add a dependency providers don't need |
+| 2026-11-01 | 3.2 | The router falls back on *any* error before the first token except the caller's own cancellation, not only 429, 5xx and timeouts; `model.Result` gains `Fallback` and `PrimaryErr` | The visitor still gets an answer when the primary fails in an unexpected way, and `PrimaryErr` keeps the cause visible for the action card (`status: fallback`) and logs, so nothing is hidden |
+| 2026-11-01 | 3.2 | After the first-token timeout, a late event from the primary is refused rather than forwarded | It would otherwise reach the visitor ahead of the fallback's answer, the stitched reply the router exists to prevent |
 
 ## Code review log
 
@@ -320,6 +322,7 @@ Outcome of each review: finding, decision (fixed / won't fix / deferred), and wh
 | 2026-11-01 | 3.1 | Breaking step durations to count from the stream's start failed no test: the test opened its step at time zero, where both starts coincide | Fixed: the test opens the step 5 ms in; it catches the break |
 | 2026-11-01 | 3.1 | The write-failure test's fake failed forever, so it couldn't tell a sticky error from a still-broken pipe | Fixed: the fake fails exactly once; breaking stickiness now fails the test |
 | 2026-11-01 | 3.1 | Self-found: `Done` set `total_ms` and `finish` overwrote it after closing open steps | Removed the first; the value now always includes closing the steps |
+| 2026-11-01 | 3.2 | Removing the first-token timeout was caught only by Go's 10-minute test deadline: the test waited forever on a router that never returned | Fixed: the wait has a 2 s limit and fails with a clear message. Six other breaks were caught normally; four router tests passed against the stub (they check that it does *not* fall back) and were proven by breaks that make it fall back |
 
 ## Spike findings
 
