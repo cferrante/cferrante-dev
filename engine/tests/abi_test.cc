@@ -128,6 +128,12 @@ TEST_CASE("builder rejects bad input with a message") {
   CHECK(rag_builder_add(nullptr, "t", ok, 0x1, err, sizeof err) == -1);
   CHECK(rag_builder_write(b, "/nonexistent-dir/x.idx", err, sizeof err) == -1);
   CHECK_FALSE(std::string(err).empty());
+  // A write that only fails when the buffer is flushed must still report the
+  // real cause. /dev/full accepts open() and fails every write with ENOSPC.
+  REQUIRE(rag_builder_add(b, "t", ok, 0x1, err, sizeof err) == 0);
+  err[0] = '\0';
+  CHECK(rag_builder_write(b, "/dev/full", err, sizeof err) == -1);
+  CHECK(std::string(err).find("No space left on device") != std::string::npos);
   rag_builder_free(b);
   rag_builder_free(nullptr);
   rag_index_free(nullptr);
