@@ -205,8 +205,9 @@ void         rag_builder_free(rag_builder* b);
   The mask is applied *before* ranking, so a private chunk can't take a public caller's slot.
 - **Search:** vector search is a brute-force dot product over the normalized vectors. BM25 uses
   k1 = 1.2, b = 0.75 and Lucene's non-negative IDF, `ln(1 + (N − n + 0.5) / (n + 0.5))`; each
-  distinct query term counts once, and N and the average chunk length are taken over all chunks,
-  visible or not (so the mask changes which chunks are returned, never their scores). Each list contributes its top N = max(k, 50) chunks after the access mask.
+  distinct query term counts once, and N, document frequency and the average chunk length are
+  taken over the chunks the caller can see. Private chunks therefore have no effect at all on a
+  public caller's results, not even on their order. Each list contributes its top N = max(k, 50) chunks after the access mask.
 - **Fusion:** [Reciprocal Rank Fusion](concepts.md#hybrid-search-and-rrf), `score = Σ 1/(60 + rank)`
   over the two lists (rank starts at 1; a chunk missing from a list adds nothing). The returned
   `score` is the fused score.

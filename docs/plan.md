@@ -246,6 +246,7 @@ Any change from this plan: what changed, why, and which step.
 | 2026-11-01 | 2.6 | Benchmark times `rag_search` through the C ABI on a file-loaded index, and the Go baseline covers vector top-k only, with the same 8-sum loop | Measures what the orchestrator will call; a like-for-like algorithm makes it a language comparison. Hybrid BM25 in Go would double the work for no decision it informs |
 | 2026-11-01 | 2.7 | Go package is named `rag` (directory `engine/go`), and the C ABI gained `rag_index_dim()`; [design §5](design.md#5-retrieval-engine-c) updated | `go` is a keyword, so it can't be a package name. Go needed the index's dimension, and reading it from the file header would have given the format a second owner |
 | 2026-11-01 | 2.7 | `Index` holds a read-write lock so `Close` during searches is safe; text with a NUL byte is rejected | Without the lock, a search racing `Close` reads freed C memory (the race detector reported it when the lock was removed on purpose). `C.CString` silently truncates at NUL |
+| 2026-11-01 | 2.3 (revisited) | BM25 statistics (N, document frequency, average length) now cover only the chunks the caller can see, reversing the 2.3 choice of all chunks; [design §5](design.md#5-retrieval-engine-c) updated | Code review: with corpus-wide statistics, terms that appear only in private chunks changed the order of public results, a weak side channel. The cost was within benchmark noise |
 
 ## Code review log
 
@@ -295,6 +296,7 @@ Outcome of each review: finding, decision (fixed / won't fix / deferred), and wh
 | 2026-11-01 | Phase 2 (`/code-review medium engine/`) | The builder briefly holds about 4× the vector data while writing | Won't fix: build time only, on the deploy machine, with a corpus expected under 2k chunks |
 | 2026-11-01 | Phase 2 (`/code-review medium engine/`) | The loader read the file one byte at a time through `istreambuf_iterator` | Fixed: one sized `fread`. `make bench-engine` load time for 2k × 512 went from 16.5 ms to 11.3 ms median (−32%). Bulk-copying the fixed sections as well measured no gain (12.1 vs 12.3 ms in a scratch timer), so it was reverted |
 | 2026-11-01 | Phase 2 (`/code-review medium engine/`) | Error messages read `errno` after iostream failures, which isn't guaranteed to be set, so a message could say "Success" | Not reproduced: writing to `/dev/full` reported "No space left on device". Switched to C stdio with the loader fix anyway, which does set `errno`, and added the `/dev/full` test as a regression guard (it passed before the change too) |
+| 2026-11-01 | Phase 2 (`/code-review medium engine/`) | IDF and average length counted private chunks, so a public caller's result order depended on private text | Fixed, test first, with your agreement: statistics over visible chunks only. A new test shows identical public scores with and without private chunks; it failed before the change. Three breaks (df, average, scoring hidden chunks) all caught |
 
 ## Spike findings
 
