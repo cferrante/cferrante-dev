@@ -107,7 +107,7 @@ rather than a rewrite.
 | Step | Test that must fail first | Done when |
 |---|---|---|
 | **2.1** CMake project + vendored doctest; `normalize()` and the simplest `dot()` (one running sum); `make test` runs the C++ tests and CI builds them | Unit tests for known vectors (incl. zero vector) fail | Pass, with `-fsanitize=address,undefined` in the test build, locally and in CI **✅ 2026-11-01** (doctest v2.5.3, nanobench v4.6.0 vendored) |
-| **2.2** Brute-force top-k with access mask | Test: a private chunk with the highest score is excluded for mask `0x1` | Correct order, ties by lower chunk id, k > count handled |
+| **2.2** Brute-force top-k with access mask | Test: a private chunk with the highest score is excluded for mask `0x1` | Correct order, ties by lower chunk id, k > count handled **✅ 2026-11-01** |
 | **2.3** Tokenizer + BM25 over an inverted index | Tokenizer cases (case, punctuation, U+2011 splits, non-ASCII kept) and hand-computed scores for a 3-doc fixture fail | Tokens as specified; scores match to 1e-5 |
 | **2.4** Reciprocal Rank Fusion and hybrid search, with the [design §5](design.md#5-retrieval-engine-c) edge cases | Fixture where fusion must reorder results; empty text → vector only; zero vector → BM25 only | Matches hand-computed ranking; every edge case tested |
 | **2.5** Versioned index file and the full C ABI: builder (`rag_builder_*`), `rag_index_load`, `rag_search` | Round-trip test; loading a wrong-version, truncated or corrupt file must return an error, not crash | Round-trip exact; under ASan, a loop rejects every truncation length and a flipped bit at every byte; no exception escapes the ABI |
