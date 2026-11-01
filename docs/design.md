@@ -127,10 +127,14 @@ requests [structured output](concepts.md#structured-output); `Reasoning` events 
 
 | Implementation | Package | Built on |
 |---|---|---|
-| Groq | `model/groq` | langchaingo `llms/openai` with Groq base URL |
+| Groq | `model/groq` | Go standard-library HTTP + SSE client for Groq's OpenAI-compatible API. Not langchaingo: its provider drops gpt-oss's streamed `delta.reasoning` ([spike 1.5](plan.md#spike-findings)) |
 | Ollama | `model/ollama` | langchaingo `llms/ollama` |
 | Bedrock | `model/bedrock` | AWS SDK for Go v2 `ConverseStream` |
 | Fake | `model/fake` | scripted events, for tests |
+
+**Matching model output.** gpt-oss writes Unicode hyphens (U+2011) where its source has `-`
+(20 of 20 answers in spike 1.5). Any exact comparison against model output, such as canary
+strings ([§10](#10-eval-file-formats)) or citations, normalises dashes first.
 
 **[Router with fallback](concepts.md#model-router-and-fallback).** `model.Router` wraps a primary
 and a fallback. It falls back **only if the primary fails before the first
