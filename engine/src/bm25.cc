@@ -26,10 +26,19 @@ std::vector<Hit> bm25_topk(const Bm25Index& index, std::span<const std::string> 
   const std::size_t num_docs = index.doc_len.size();
   if (n == 0 || num_docs == 0 || query.empty()) return hits;
 
-  double total_len = 0;
-  for (auto len : index.doc_len) total_len += len;
-  // If every chunk is empty there are no postings, so avg_len is never a divisor.
-  const double avg_len = total_len / static_cast<double>(num_docs);
+  // Statistics cover only the chunks this caller can see, so hidden chunks have
+  // no effect at all on the scores (design §5).
+  const auto visible = [&](std::uint32_t d) { return (access[d] & mask) != 0; };
+  double num_visible = 0, total_len = 0;
+  for (std::uint32_t d = 0; d < num_docs; ++d) {
+    if (visible(d)) {
+      ++num_visible;
+      total_len += index.doc_len[d];
+    }
+  }
+  // No visible tokens means no visible postings, so avg_len is never a divisor.
+  if (num_visible == 0) return hits;
+  const double avg_len = total_len / num_visible;
 
   // Each distinct query term counts once.
   std::vector<std::string_view> terms(query.begin(), query.end());
@@ -40,9 +49,12 @@ std::vector<Hit> bm25_topk(const Bm25Index& index, std::span<const std::string> 
   for (auto term : terms) {
     const auto it = index.postings.find(term);
     if (it == index.postings.end()) continue;
-    const double df = static_cast<double>(it->second.size());
-    const double idf = std::log(1.0 + (static_cast<double>(num_docs) - df + 0.5) / (df + 0.5));
+    double df = 0;
+    for (const auto& p : it->second) df += visible(p.doc) ? 1 : 0;
+    if (df == 0) continue;
+    const double idf = std::log(1.0 + (num_visible - df + 0.5) / (df + 0.5));
     for (const auto& p : it->second) {
+      if (!visible(p.doc)) continue;  // a hidden chunk is never scored
       const double tf = p.tf;
       const double norm = kBm25K1 * (1.0 - kBm25B + kBm25B * index.doc_len[p.doc] / avg_len);
       scores[p.doc] += idf * tf * (kBm25K1 + 1.0) / (tf + norm);
@@ -50,7 +62,7 @@ std::vector<Hit> bm25_topk(const Bm25Index& index, std::span<const std::string> 
   }
 
   for (std::uint32_t d = 0; d < num_docs; ++d) {
-    if (scores[d] > 0.0 && (access[d] & mask) != 0) {
+    if (scores[d] > 0.0) {  // only visible chunks were scored
       hits.push_back({d, static_cast<float>(scores[d])});
     }
   }

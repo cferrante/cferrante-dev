@@ -72,14 +72,50 @@ TEST_CASE("a repeated query term counts once") {
   CHECK(twice[0].score == Approx(once[0].score).epsilon(kEps));
 }
 
-TEST_CASE("hidden chunks are not returned, but still count in N and average length") {
+TEST_CASE("statistics come from visible chunks only") {
+  // d1 is invitee-only. A public caller's N and average length cover d0 and
+  // d2 (N = 2, average 3.5), and df counts visible chunks only:
+  //   idf(go)     = ln(1 + (2 - 2 + 0.5) / (2 + 0.5)) = ln(1.2) = 0.1823216
+  //   idf(engine) = ln(1 + (2 - 1 + 0.5) / (1 + 0.5)) = ln(2)   = 0.6931472
+  //   term(tf, len) = tf * 2.2 / (tf + 1.2 * (0.25 + 0.75 * len / 3.5))
+  //   d0 = (0.1823216 + 0.6931472) * term(1, 3) = 0.9298082
+  //   d2 =  0.1823216 * term(2, 4)              = 0.2410088
   const auto idx = rag::bm25_build(kDocs);
-  const std::vector<std::uint32_t> access{0x1, 0x2, 0x1};  // d1 invitee-only
+  const std::vector<std::uint32_t> access{0x1, 0x2, 0x1};
   const auto hits = rag::bm25_topk(idx, rag::tokenize("go engine"), access, 0x1, 10);
   REQUIRE(hits.size() == 2);
   CHECK(hits[0].id == 0);
-  CHECK(hits[0].score == Approx(0.9801024).epsilon(kEps));  // unchanged statistics
+  CHECK(hits[0].score == Approx(0.9298082).epsilon(kEps));
   CHECK(hits[1].id == 2);
+  CHECK(hits[1].score == Approx(0.2410088).epsilon(kEps));
+
+  // An invitee sees all three, so gets the all-chunk statistics.
+  const auto all = rag::bm25_topk(idx, rag::tokenize("go engine"), access, 0x3, 10);
+  REQUIRE(all.size() == 3);
+  CHECK(all[0].score == Approx(0.9801024).epsilon(kEps));
+}
+
+TEST_CASE("private chunks have no effect at all on a public caller's scores") {
+  // The same public chunks with and without private ones beside them must
+  // score identically, so public results reveal nothing about private text.
+  const std::vector<std::vector<std::string>> with_private{
+      rag::tokenize("go engine fast"), rag::tokenize("engine engine engine secret"),
+      rag::tokenize("go lambda"), rag::tokenize("secret go go")};
+  const std::vector<std::uint32_t> access{0x1, 0x2, 0x1, 0x2};
+  const std::vector<std::vector<std::string>> public_only{with_private[0], with_private[2]};
+  const auto a = rag::bm25_build(with_private);
+  const auto b = rag::bm25_build(public_only);
+  for (const char* q : {"go", "engine", "go engine lambda", "secret go"}) {
+    CAPTURE(q);
+    const auto ha = rag::bm25_topk(a, rag::tokenize(q), access, 0x1, 10);
+    const auto hb = rag::bm25_topk(b, rag::tokenize(q), std::vector<std::uint32_t>{0x1, 0x1}, 0x1, 10);
+    REQUIRE(ha.size() == hb.size());
+    const std::uint32_t public_id[] = {0, 2};  // b's ids 0, 1 are a's 0, 2
+    for (std::size_t i = 0; i < ha.size(); ++i) {
+      CHECK(ha[i].id == public_id[hb[i].id]);
+      CHECK(ha[i].score == Approx(hb[i].score).epsilon(1e-6));
+    }
+  }
 }
 
 TEST_CASE("n limits the number of hits") {

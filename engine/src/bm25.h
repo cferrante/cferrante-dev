@@ -34,7 +34,8 @@ Bm25Index bm25_build(const std::vector<std::vector<std::string>>& docs);
 // and returns at most n with a positive score, best first. Each distinct query
 // term counts once. IDF is Lucene's non-negative form,
 //   idf = ln(1 + (N - n_t + 0.5) / (n_t + 0.5)),
-// with N and the average length taken over all chunks, visible or not.
+// with N, n_t and the average length taken over visible chunks only, so hidden
+// chunks have no effect on the scores a caller sees.
 std::vector<Hit> bm25_topk(const Bm25Index& index, std::span<const std::string> query,
                            std::span<const std::uint32_t> access, std::uint32_t mask,
                            std::uint32_t n);
