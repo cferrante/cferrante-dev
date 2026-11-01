@@ -38,6 +38,9 @@ bench-engine-scale: ## Benchmark retrieval from 1k to 50k chunks (informational)
 	cmake --build $(ENGINE_RELEASE) -j --target rag_bench
 	$(ENGINE_RELEASE)/rag_bench --scale
 
+bench-go: ## Benchmark the pure-Go vector baseline (informational)
+	go run ./engine/baseline/cmd/benchgo
+
 lint: ## Check formatting, run go vet and shellcheck
 	@unformatted=$$(gofmt -l .); \
 	if [ -n "$$unformatted" ]; then echo "gofmt needed:"; echo "$$unformatted"; exit 1; fi
