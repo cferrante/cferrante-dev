@@ -187,3 +187,27 @@ func TestStreamStopsWhenCallbackFails(t *testing.T) {
 		t.Fatalf("err = %v after %d events, want stop after 1", err, n)
 	}
 }
+
+// A real Groq stream (turn 1 of a live run, 2026-11-01): reasoning arrives in
+// delta.reasoning with "channel":"analysis", the tool call arrives whole in
+// one chunk, and usage comes twice (x_groq and the final usage chunk).
+func TestStreamParsesLiveRecording(t *testing.T) {
+	srv := replay(t, "testdata/live_tool_call.sse", 0)
+	c := &Client{BaseURL: srv.URL, APIKey: "test"}
+	events, res := collect(t, c, Request{Model: "openai/gpt-oss-120b"})
+
+	count := map[EventKind]int{}
+	for _, e := range events {
+		count[e.Kind]++
+	}
+	if count[Reasoning] != 30 || count[Text] != 0 || count[ToolCallEvent] != 1 {
+		t.Errorf("event counts = %v, want 30 reasoning, 0 text, 1 tool call", count)
+	}
+	if len(res.ToolCalls) != 1 || res.ToolCalls[0].Function.Name != "lookup_project" ||
+		res.ToolCalls[0].Function.Arguments != `{"name":"cferrante-dev"}` || res.ToolCalls[0].ID == "" {
+		t.Errorf("tool calls = %+v", res.ToolCalls)
+	}
+	if res.StopReason != "tool_calls" || res.TokensIn != 185 || res.TokensOut != 61 || res.ReasoningTokens != 31 {
+		t.Errorf("result = %+v", res)
+	}
+}
