@@ -90,8 +90,14 @@ before Phase 2. Cost: $0 (free tiers; spike resources torn down afterwards).
 
 ## Phase 2 — Retrieval engine, C++ ($0)
 
-Built with CMake, tested with doctest, benchmarked with nanobench. Everything here runs locally
-and in CI.
+Built with CMake (C++20, GCC), tested with doctest, benchmarked with nanobench. Everything here
+runs locally and in CI. The contract is [design §5](design.md#5-retrieval-engine-c), including
+the tokenizer, file format, edge cases and builder ABI.
+
+**Dependencies:** doctest and nanobench are single headers, copied into `engine/third_party/`
+and pinned by release tag and SHA-256 (recorded in a README there). No download at build time,
+so CI works offline and builds the same way every time; about 300 KB in the repo. No new
+system packages: g++ 15, CMake and ninja are already installed and on CI runners.
 
 **Portability rule:** no architecture-specific code (such as AVX2 intrinsics) without a portable
 fallback that is tested and benchmarked alongside it. The hot loops are written so the compiler
@@ -100,13 +106,16 @@ rather than a rewrite.
 
 | Step | Test that must fail first | Done when |
 |---|---|---|
-| **2.1** CMake project + doctest; `normalize()` and `dot()` | Unit tests for known vectors (incl. zero vector) fail | Pass, with `-fsanitize=address,undefined` in the test build |
-| **2.2** Brute-force top-k with access mask | Test: a private chunk with the highest score is excluded for mask `0x1` | Correct order, ties stable, k > count handled |
-| **2.3** BM25 over an inverted index | Hand-computed scores for a 3-doc fixture don't match | Matches to 1e-5 |
-| **2.4** Reciprocal Rank Fusion | Fixture where fusion must reorder results | Matches hand-computed ranking |
-| **2.5** Versioned index file (write + load) and the C ABI from [design §5](design.md#5-retrieval-engine-c) | Round-trip test; loading a wrong-version or truncated file must return an error, not crash | Round-trip exact; fuzzed corrupt files rejected safely |
-| **2.6** Benchmarks (nanobench) + a **pure-Go baseline** | CI gate "p99 < 1 ms" fails until the SIMD path exists | Gate green; C++ vs Go numbers recorded honestly |
-| **2.7** Go binding package (`engine/go`) | Go test calling `rag_search` via cgo fails (no binding) | Passes, including under `go test -race` with concurrent searches |
+| **2.1** CMake project + vendored doctest; `normalize()` and the simplest `dot()` (one running sum); `make test` runs the C++ tests and CI builds them | Unit tests for known vectors (incl. zero vector) fail | Pass, with `-fsanitize=address,undefined` in the test build, locally and in CI |
+| **2.2** Brute-force top-k with access mask | Test: a private chunk with the highest score is excluded for mask `0x1` | Correct order, ties by lower chunk id, k > count handled |
+| **2.3** Tokenizer + BM25 over an inverted index | Tokenizer cases (case, punctuation, U+2011 splits, non-ASCII kept) and hand-computed scores for a 3-doc fixture fail | Tokens as specified; scores match to 1e-5 |
+| **2.4** Reciprocal Rank Fusion and hybrid search, with the [design §5](design.md#5-retrieval-engine-c) edge cases | Fixture where fusion must reorder results; empty text → vector only; zero vector → BM25 only | Matches hand-computed ranking; every edge case tested |
+| **2.5** Versioned index file and the full C ABI: builder (`rag_builder_*`), `rag_index_load`, `rag_search` | Round-trip test; loading a wrong-version, truncated or corrupt file must return an error, not crash | Round-trip exact; under ASan, a loop rejects every truncation length and a flipped bit at every byte; no exception escapes the ABI |
+| **2.6** Benchmarks (nanobench, 2k × 512 chunks generated from a fixed seed) + a **pure-Go baseline** | CI gate "p99 < 1 ms" fails on the single-sum `dot()` (estimated ~1.3 ms on CI, to be measured) | `dot()` rewritten with independent accumulators the compiler vectorizes; gate green; C++ vs Go numbers recorded honestly in [benchmarks](benchmarks.md#results) |
+| **2.7** Go binding package (`engine/go`), compiling the engine sources through cgo | Go test calling `rag_search` via cgo fails (no binding) | Passes with plain `go test`, including `-race` with concurrent searches; indexer-style build → load → search round trip through Go |
+
+If the 2.6 gate passes on the first run, the gate is proven instead with a deliberate slowdown,
+and that is recorded as a deviation.
 
 ## Phase 3 — Orchestrator core, Go, fake model ($0)
 
@@ -218,6 +227,13 @@ Any change from this plan: what changed, why, and which step.
 | 2026-11-01 | 1.5 | The key is stored by `infra/bootstrap/aws/06-groq-key.sh` (PRs #20, #21), not a spike script; spike teardown leaves it | One owner for the secret's lifecycle; Phase 5 reuses it |
 | 2026-11-01 | 1.5 | Tokens/s is measured on turn 2 only; turn 1's TTFT is the reported TTFT | Turn 1's output tokens include tool-call arguments that arrive in one chunk after the timed tokens; one run computed 939,006 tokens/s |
 | 2026-11-01 | 3.4, 3.5 | langchaingo dropped from the project: Ollama uses the same standard-library client as Groq, and chunking is our own splitter | After spike 1.5, langchaingo would only have served local development and a text splitter. One client for both OpenAI-compatible providers is less code than an adapter per provider, keeps 290 modules out, and puts the chunk boundaries the evals depend on under our own tests. Ollama's reasoning field is checked in 3.5 |
+| 2026-11-01 | 2.3, 2.5, 3.4 | The engine owns the index format *and* the tokenizer; the Go indexer builds the file through a new `rag_builder_*` C ABI instead of writing it itself ([design §5](design.md#5-retrieval-engine-c)) | Index-time and query-time tokenization must match exactly, or BM25 silently misses. One implementation makes that impossible to get wrong |
+| 2026-11-01 | 2.3 | Tokenizer splits on Unicode dashes (U+2010–U+2015, U+2212) as well as ASCII punctuation | Spike 1.5: gpt-oss wrote U+2011 in 20 of 20 answers; without this, "multi‑agent" would index as one token |
+| 2026-11-01 | 2.4 | Hybrid search details specified: top N = max(k, 50) per list after the mask, empty-text and zero-vector fallbacks, ties by lower chunk id | "Matches hand-computed ranking" needs a defined ranking to compute by hand |
+| 2026-11-01 | 2.5 | Index file gains a CRC32; corruption tested by an exhaustive truncation and bit-flip loop under ASan, not coverage-guided fuzzing | A size check misses flipped bytes. libFuzzer needs clang (not installed, a few hundred MB); on a small file the loop covers every case |
+| 2026-11-01 | 2.1 | doctest and nanobench vendored and pinned by SHA-256, not fetched by CMake | Offline, reproducible CI; no supply-chain download at build time |
+| 2026-11-01 | 2.6 | "SIMD path" means a portable multi-accumulator loop the compiler vectorizes, not intrinsics | Keeps the portability rule; a single running sum can't be vectorized without `-ffast-math`, which is why the naive gate is expected to fail |
+| 2026-11-01 | 2.7 | `engine/go` compiles the engine sources through cgo instead of linking a CMake-built library | `go test ./...` and the Lambda build stay one command; CMake remains for C++ tests, sanitizers and benchmarks |
 
 ## Code review log
 
