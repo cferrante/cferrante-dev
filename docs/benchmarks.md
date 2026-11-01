@@ -139,6 +139,7 @@ didn't record the CPU; `rag_bench` now prints it.
 | Date | Provider | Model | TTFT p50 | TTFT p95 | Tokens/s p50 | Cached tokens | Notes |
 |---|---|---|---|---|---|---|---|
 | 2026-11-01 | Groq, from Lambda (128 MB, x86_64, us-east-1) | `openai/gpt-oss-120b` | 198 ms | 464 ms | 483 | 256 on 7 of 20 turn-2 requests; 0 on turn 1 | n = 20 after 1 warm-up, 10 s apart; spike 1.5 at `bfd5c26`; default reasoning effort. TTFT is turn 1 (question + one tool, 185 input tokens), p99 811 ms; turn 2 (with the tool result, 304–560 input tokens) p50 215 ms, p95 354 ms. Tokens/s from turn 2 (271–447 output tokens incl. reasoning); slowest 5% 354 |
+| 2026-11-01 | Ollama 0.33.3, local CPU (WSL2, no GPU) | `qwen3:4b`, `reasoning_effort` low | 6,713 ms | — | 17 | 0 | n = 1, one `make dev` turn through the full orchestrator (237 input tokens incl. 4 passages, 510 output tokens, 37.0 s total); development only. Same question with qwen3's default effort: a one-line sum took 373 s (3,755 output tokens, ≈ 10 tokens/s); with `low`, 11 s |
 
 ## Questions the benchmarks should answer
 

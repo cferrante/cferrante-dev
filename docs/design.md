@@ -146,7 +146,7 @@ needed: providers take the schema as JSON anyway); `Reasoning` events come from
 | Implementation | Package | Built on |
 |---|---|---|
 | Groq | `model/oai` | Go standard-library HTTP + SSE client for Groq's OpenAI-compatible API. Not langchaingo: its provider drops gpt-oss's streamed `delta.reasoning` ([spike 1.5](plan.md#spike-findings)) |
-| Ollama | `model/oai` | The same client as Groq, configured with a different base URL, pointed at Ollama's OpenAI-compatible `/v1` API. Whether Ollama streams reasoning in the same field is unverified; step 3.5 checks it against a recorded stream, and if it differs, a small adapter maps it |
+| Ollama | `model/oai` | The same client as Groq, pointed at Ollama's OpenAI-compatible `/v1` API. **Verified in step 3.5:** Ollama streams qwen3's reasoning in the same `delta.reasoning` field, so no adapter is needed. The client sends `reasoning_effort: low` by default for local use: on the laptop's CPU (about 10–17 tokens/s) qwen3's default thinking took 373 s for a one-line sum, `low` 11 s |
 | Bedrock | `model/bedrock` | AWS SDK for Go v2 `ConverseStream` |
 | Fake | `model/fake` | scripted events, for tests |
 

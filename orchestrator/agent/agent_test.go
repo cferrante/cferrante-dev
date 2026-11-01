@@ -317,3 +317,13 @@ func TestStoreKeepsOnlyRecentHistoryForThePrompt(t *testing.T) {
 		t.Errorf("loaded %d messages starting %q, want the last %d", len(got), got[0].Content, HistoryMessages)
 	}
 }
+
+func TestNarrationGroupsPassagesFromTheSameDocument(t *testing.T) {
+	got := narrate([]Chunk{{Title: "Project Alpha"}, {Title: "Project Alpha"}, {Title: "A long story"}, {Title: "Project Alpha"}})
+	if want := "Found 4 passages: Project Alpha (3 passages), A long story."; got != want {
+		t.Errorf("narrate = %q, want %q", got, want)
+	}
+	if got := narrate([]Chunk{{Title: "Only"}}); got != "Found 1 passage: Only." {
+		t.Errorf("narrate one = %q", got)
+	}
+}

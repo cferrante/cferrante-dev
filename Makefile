@@ -7,7 +7,7 @@ GO_PKGS := $(shell go list ./... 2>/dev/null)
 SH_FILES := $(shell find . -name '*.sh' -not -path './.git/*')
 SHELLCHECK ?= shellcheck
 
-.PHONY: help test engine-test bench-engine bench-engine-scale bench-go lint fmt docs-check
+.PHONY: help test engine-test bench-engine bench-engine-scale bench-go dev lint fmt docs-check
 
 ENGINE_BUILD := build/engine
 ENGINE_RELEASE := build/engine-release
@@ -40,6 +40,9 @@ bench-engine-scale: ## Benchmark retrieval from 1k to 50k chunks (informational)
 
 bench-go: ## Benchmark the pure-Go vector baseline (informational)
 	go run ./engine/baseline/cmd/benchgo
+
+dev: ## Serve /chat locally over Ollama (qwen3:4b, nomic-embed-text); DEV_FLAGS=-invitee etc.
+	go run ./orchestrator/cmd/dev $(DEV_FLAGS)
 
 lint: ## Check formatting, run go vet and shellcheck
 	@unformatted=$$(gofmt -l .); \
