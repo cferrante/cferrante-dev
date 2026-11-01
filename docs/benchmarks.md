@@ -104,6 +104,8 @@ GCC 15.2 `-O3`, no `-march`.
 | 2026-11-01 | #33 | C++ hybrid scaling, 10k × 512 | 1.004 ms | 1.240 ms | 1.578 ms | Over the gate. The 5k → 10k step is worse than linear; vectors are 20 MB here, likely past the CPU cache (not verified) |
 | 2026-11-01 | #33 | C++ hybrid scaling, 20k × 512 | 2.275 ms | 2.749 ms | 3.727 ms | |
 | 2026-11-01 | #33 | C++ hybrid scaling, 50k × 512 | 5.600 ms | 6.351 ms | 8.013 ms | |
+| 2026-11-01 | before #36 | Index load (`rag_index_load`), 2k × 512, 5.5 MB file | 16.4 ms | — | — | Median of 11 (two runs: 16.4, 16.6 ms). Byte-at-a-time iostream read |
+| 2026-11-01 | #36 | Index load (`rag_index_load`), 2k × 512, 5.5 MB file | 11.2 ms | — | — | Median of 11 (two runs: 11.2, 11.5 ms). One sized `fread`; the rest is parsing and building postings. Part of every cold start |
 
 ### CI runner (GitHub Actions `ubuntu-latest`)
 
