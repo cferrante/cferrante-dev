@@ -7,12 +7,13 @@ GO_PKGS := $(shell go list ./... 2>/dev/null)
 SH_FILES := $(shell find . -name '*.sh' -not -path './.git/*')
 SHELLCHECK ?= shellcheck
 
-.PHONY: help test engine-test lint fmt docs-check
+.PHONY: help test engine-test bench-engine bench-engine-scale lint fmt docs-check
 
 ENGINE_BUILD := build/engine
+ENGINE_RELEASE := build/engine-release
 
 help: ## List targets
-	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-12s %s\n", $$1, $$2}'
+	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-19s %s\n", $$1, $$2}'
 
 test: engine-test ## Run all tests
 ifneq ($(GO_PKGS),)
@@ -26,6 +27,16 @@ engine-test: ## Build and run the C++ engine tests with ASan and UBSan
 	cmake -S engine -B $(ENGINE_BUILD) -DCMAKE_BUILD_TYPE=Debug -DRAG_SANITIZE=ON >/dev/null
 	cmake --build $(ENGINE_BUILD) -j
 	ctest --test-dir $(ENGINE_BUILD) --output-on-failure
+
+bench-engine: ## Benchmark retrieval (2k x 512) and fail if p99 >= 1 ms
+	cmake -S engine -B $(ENGINE_RELEASE) -DCMAKE_BUILD_TYPE=Release >/dev/null
+	cmake --build $(ENGINE_RELEASE) -j --target rag_bench
+	$(ENGINE_RELEASE)/rag_bench
+
+bench-engine-scale: ## Benchmark retrieval from 1k to 50k chunks (informational)
+	cmake -S engine -B $(ENGINE_RELEASE) -DCMAKE_BUILD_TYPE=Release >/dev/null
+	cmake --build $(ENGINE_RELEASE) -j --target rag_bench
+	$(ENGINE_RELEASE)/rag_bench --scale
 
 lint: ## Check formatting, run go vet and shellcheck
 	@unformatted=$$(gofmt -l .); \
