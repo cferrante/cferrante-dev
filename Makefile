@@ -7,18 +7,25 @@ GO_PKGS := $(shell go list ./... 2>/dev/null)
 SH_FILES := $(shell find . -name '*.sh' -not -path './.git/*')
 SHELLCHECK ?= shellcheck
 
-.PHONY: help test lint fmt docs-check
+.PHONY: help test engine-test lint fmt docs-check
+
+ENGINE_BUILD := build/engine
 
 help: ## List targets
-	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-8s %s\n", $$1, $$2}'
+	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-12s %s\n", $$1, $$2}'
 
-test: ## Run all tests
+test: engine-test ## Run all tests
 ifneq ($(GO_PKGS),)
 	go test -race ./...
 else
 	@echo "test: no Go packages yet"
 endif
 	infra/bootstrap/aws/secret_test.sh
+
+engine-test: ## Build and run the C++ engine tests with ASan and UBSan
+	cmake -S engine -B $(ENGINE_BUILD) -DCMAKE_BUILD_TYPE=Debug -DRAG_SANITIZE=ON >/dev/null
+	cmake --build $(ENGINE_BUILD) -j
+	ctest --test-dir $(ENGINE_BUILD) --output-on-failure
 
 lint: ## Check formatting, run go vet and shellcheck
 	@unformatted=$$(gofmt -l .); \
