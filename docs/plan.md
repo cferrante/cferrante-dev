@@ -339,6 +339,7 @@ Outcome of each review: finding, decision (fixed / won't fix / deferred), and wh
 | 2026-11-01 | 3.5 | Two handler breaks (no flush, disconnect not cancelling) were caught only by the 30 s test deadline: without a flush even `http.Client.Do` never returns, and a turn that never ends blocks the test server's shutdown | Fixed: the request and the first read each get a 2 s limit, and the fake turn has a release channel the test closes on failure; both breaks now fail in 2 s with a clear message |
 | 2026-11-01 | 3.5 | Live run: the thought stream listed "Project Alpha" three times | Fixed, test first: one entry per document with a passage count; the test also caught "1 passages" |
 | 2026-11-01 | 3.5 | Process: my cleanup `pkill -f 'orchestrator/cmd/dev'` matched and killed its own shell (the text was in its command line) | No harm beyond a failed command; the dev server is now tracked by its PID |
+| 2026-11-01 | 3.5 (your click-through) | Ctrl+C on `make dev` printed `make: *** [Makefile:45: dev] Error 1` | Reproduced: the server itself exits 0 on SIGINT, but `go run` exits 1 when interrupted. Fixed: `make dev` builds the binary and runs it directly, and the server prints `stopped`. The automated tests missed it because they call the handler and setup, never `go run` under a terminal signal |
 
 ## Spike findings
 

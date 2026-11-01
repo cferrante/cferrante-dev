@@ -42,7 +42,10 @@ bench-go: ## Benchmark the pure-Go vector baseline (informational)
 	go run ./engine/baseline/cmd/benchgo
 
 dev: ## Serve /chat locally over Ollama (qwen3:4b, nomic-embed-text); DEV_FLAGS=-invitee etc.
-	go run ./orchestrator/cmd/dev $(DEV_FLAGS)
+	@# Built then run directly, not with `go run`: go run exits 1 on Ctrl+C even
+	@# when the server shuts down cleanly, so make would report a false error.
+	go build -o build/dev/server ./orchestrator/cmd/dev
+	build/dev/server $(DEV_FLAGS)
 
 lint: ## Check formatting, run go vet and shellcheck
 	@unformatted=$$(gofmt -l .); \
