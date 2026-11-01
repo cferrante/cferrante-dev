@@ -18,6 +18,7 @@ ifneq ($(GO_PKGS),)
 else
 	@echo "test: no Go packages yet"
 endif
+	infra/bootstrap/aws/secret_test.sh
 
 lint: ## Check formatting, run go vet and shellcheck
 	@unformatted=$$(gofmt -l .); \
