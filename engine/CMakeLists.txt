@@ -23,6 +23,8 @@ add_library(rag STATIC
   src/bm25.cc
   src/rrf.cc
   src/search.cc
+  src/index_file.cc
+  src/rag.cc
 )
 target_include_directories(rag PUBLIC include src)
 
@@ -34,6 +36,8 @@ add_executable(rag_tests
   tests/bm25_test.cc
   tests/rrf_test.cc
   tests/search_test.cc
+  tests/index_file_test.cc
+  tests/abi_test.cc
 )
 target_link_libraries(rag_tests PRIVATE rag)
 target_include_directories(rag_tests SYSTEM PRIVATE third_party)
