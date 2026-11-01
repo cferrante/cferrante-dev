@@ -31,6 +31,7 @@ constexpr std::uint32_t kK = 10;
 constexpr int kVocab = 5000;
 constexpr int kQueries = 100;
 constexpr double kGateMs = 1.0;
+constexpr int kLoads = 11;
 
 struct Query {
   std::vector<float> vec;
@@ -39,6 +40,7 @@ struct Query {
 
 struct Corpus {
   rag_index* index = nullptr;
+  double load_ms = 0;  // median of kLoads rag_index_load calls (cold-start cost)
   std::vector<Query> queries;
 };
 
@@ -80,7 +82,18 @@ Corpus make_corpus(std::uint32_t chunks) {
   }
   rag_builder_free(b);
   Corpus c;
-  c.index = rag_index_load(path.c_str(), err, sizeof err);
+  std::vector<double> load_ms;
+  for (int i = 0; i < kLoads; ++i) {
+    if (c.index != nullptr) rag_index_free(c.index);
+    const auto t0 = std::chrono::steady_clock::now();
+    c.index = rag_index_load(path.c_str(), err, sizeof err);
+    load_ms.push_back(
+        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count());
+  }
+  std::sort(load_ms.begin(), load_ms.end());
+  c.load_ms = load_ms[kLoads / 2];
+  std::printf("%-12s %6u x %u   median %.2f ms, %.1f MB file (n = %d)\n", "load", chunks, kDim,
+              c.load_ms, static_cast<double>(std::filesystem::file_size(path)) / 1e6, kLoads);
   std::filesystem::remove(path);
   if (c.index == nullptr) {
     std::fprintf(stderr, "load: %s\n", err);
