@@ -191,8 +191,9 @@ void         rag_builder_free(rag_builder* b);
   see [spike findings](plan.md#spike-findings)). Other non-ASCII bytes stay inside tokens, without
   case folding. No stemming and no stop-word list: [BM25](concepts.md#bm25)'s IDF already
   down-weights common words.
-- **Index file:** versioned, little-endian binary. Header: `magic`, `version`, `dim`, `count`,
-  section offsets and a CRC32 of everything after the header. Then
+- **Index file:** versioned, little-endian binary (layout in `engine/src/index_file.h`). Header:
+  `magic`, `version`, `dim`, `count`, term count, payload length and a CRC32 of the payload;
+  section sizes follow from the counts, so there are no offsets to trust. Then
   [normalized](concepts.md#cosine-similarity-and-dot-product) float32 vectors,
   BM25 postings (an [inverted index](concepts.md#inverted-index)) with document lengths, and
   per-chunk access bits. The file is read whole into memory (no mmap). Load checks the magic,
@@ -210,7 +211,11 @@ void         rag_builder_free(rag_builder* b);
   `score` is the fused score.
 - **Edge cases:** an empty or null `query_text` (or one with no tokens) means vector search only;
   an all-zero `query_vec` means BM25 only; both empty returns 0 hits. `dim` different from the
-  index's returns -1. `k` larger than the matching chunks returns fewer hits. Equal scores are
+  index's returns -1, and so does a NaN or infinite value in `query_vec` (a NaN score would break
+  the sort's ordering rules, which is undefined behaviour). `k` larger than the matching chunks
+  returns fewer hits. The builder normalizes each vector and rejects a zero or non-finite one,
+  and `access_bits` of 0; the loader rejects non-finite vectors and postings that disagree with
+  the chunk lengths. Equal scores are
   ordered by lower `chunk_id`, so results are deterministic.
 - **Errors at the boundary:** every ABI function is `noexcept` and catches all exceptions
   internally, reporting -1 or `NULL` with a message. A C++ exception unwinding into Go would crash
