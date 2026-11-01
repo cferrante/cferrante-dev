@@ -405,8 +405,11 @@ create table eval_results (
 - **[Migrations](concepts.md#migrations):** plain numbered SQL files in `orchestrator/migrations/`, applied by a small Go
   command. **[[D3]](#d3-migrations-tool)** (or a tool such as `goose`, which adds a dependency).
 - **Conversation history** for the prompt comes through a `ConversationStore` interface, never
-  from the browser (a forged earlier "assistant" turn would be an injection). The last few turns
-  are used. In memory in Phase 3; the Phase 9 implementation must keep this read within the
+  from the browser (a forged earlier "assistant" turn would be an injection). The last 10
+  messages are used, and history keeps the bare question, not the passages, so each turn
+  retrieves afresh. **Conversation ids are issued by the server** (128 random bits) and belong to
+  the caller who started them: an id from another caller, or one the server never issued, starts
+  a new conversation instead of continuing one, so knowing an id never reveals someone's history. In memory in Phase 3; the Phase 9 implementation must keep this read within the
   latency budget (Neon scales to zero, so a cold read is measured before choosing).
 - The [golden dataset](concepts.md#golden-dataset) itself lives in git (`evals/golden/`), so it is reviewed like code; only
   *results* go to Postgres.
