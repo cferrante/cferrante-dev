@@ -36,8 +36,9 @@ func delta(field, s string) string {
 }
 
 // fakeGroq plays a two-turn conversation. Turn 1 replays firstTurn; turn 2
-// checks the tool result came back and answers with the codename.
-func fakeGroq(t *testing.T, firstTurn string) *httptest.Server {
+// checks the tool result came back and answers with the codename, spelled
+// as given (models don't always echo it byte for byte).
+func fakeGroq(t *testing.T, firstTurn, spelling string) *httptest.Server {
 	t.Helper()
 	var mu sync.Mutex
 	n := 0
@@ -67,7 +68,7 @@ func fakeGroq(t *testing.T, firstTurn string) *httptest.Server {
 			}
 			answer := "It is a personal site."
 			if len(m) == 4 && strings.Contains(m[3].Content, Codename) {
-				answer += " Codename " + Codename + "."
+				answer += " Codename " + spelling + "."
 			}
 			io.WriteString(w, sse(delta("reasoning", "Summarise the facts."), delta("content", answer),
 				`{"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`))
@@ -85,7 +86,7 @@ func TestRunRoundTripsOneToolCall(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := fakeGroq(t, string(first))
+	srv := fakeGroq(t, string(first), Codename)
 	rep, err := Run(context.Background(), &groq.Client{BaseURL: srv.URL, APIKey: "test"}, "m")
 	if err != nil {
 		t.Fatalf("Run: %v", err)
@@ -107,7 +108,7 @@ func TestRunRoundTripsOneToolCall(t *testing.T) {
 // The checks must be able to fail: a model that answers without the tool.
 func TestRunReportsMissingToolCall(t *testing.T) {
 	srv := fakeGroq(t, sse(delta("content", "I don't know."),
-		`{"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`))
+		`{"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`), Codename)
 	rep, err := Run(context.Background(), &groq.Client{BaseURL: srv.URL, APIKey: "test"}, "m")
 	if err != nil {
 		t.Fatalf("Run: %v", err)
@@ -118,6 +119,23 @@ func TestRunReportsMissingToolCall(t *testing.T) {
 	want := []string{"turn 1: no reasoning events", "turn 1: no tool call"}
 	if strings.Join(rep.Problems, "|") != strings.Join(want, "|") {
 		t.Errorf("problems = %q, want %q", rep.Problems, want)
+	}
+}
+
+// Found live: gpt-oss wrote the codename with U+2011 (non-breaking hyphen)
+// instead of "-". That still proves the tool result reached the model.
+func TestRunAcceptsUnicodeHyphenInCodename(t *testing.T) {
+	first, err := os.ReadFile("../groq/testdata/tool_call.sse")
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := fakeGroq(t, string(first), strings.Replace(Codename, "-", "\u2011", 1))
+	rep, err := Run(context.Background(), &groq.Client{BaseURL: srv.URL, APIKey: "test"}, "m")
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if !rep.OK {
+		t.Errorf("OK = false, problems %q, answer %q", rep.Problems, rep.Answer)
 	}
 }
 

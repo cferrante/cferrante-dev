@@ -99,7 +99,7 @@ func Run(ctx context.Context, c *groq.Client, model string) (Report, error) {
 	if t2.ToolCalls > 0 {
 		problem("turn 2: %d more tool calls, want an answer", t2.ToolCalls)
 	}
-	if !strings.Contains(res2.Text, Codename) {
+	if !strings.Contains(asciiDashes(res2.Text), Codename) {
 		problem("turn 2: answer doesn't mention the codename from the tool result")
 	}
 	rep.OK = len(rep.Problems) == 0
@@ -167,5 +167,13 @@ func turn(ctx context.Context, c *groq.Client, req groq.Request) (groq.Result, T
 	t.StopReason = res.StopReason
 	return res, t, nil
 }
+
+// asciiDashes maps Unicode hyphens and dashes to "-". gpt-oss writes
+// U+2011 (non-breaking hyphen) in names like heron-42, so exact matching on
+// model output must normalise them first.
+var asciiDashes = strings.NewReplacer(
+	"\u2010", "-", "\u2011", "-", "\u2012", "-", "\u2013", "-", "\u2014", "-",
+	"\u2015", "-", "\u2212", "-", "\ufe63", "-", "\uff0d", "-",
+).Replace
 
 func ms(d time.Duration) float64 { return float64(d.Microseconds()) / 1000 }
