@@ -84,6 +84,10 @@ void rag_index_free(rag_index* idx) noexcept { delete idx; }
 
 uint32_t rag_index_dim(const rag_index* idx) noexcept { return idx ? idx->index.dim : 0; }
 
+uint32_t rag_index_count(const rag_index* idx) noexcept {
+  return idx ? static_cast<uint32_t>(idx->index.access.size()) : 0;
+}
+
 int rag_search(const rag_index* idx, const float* query_vec, uint32_t dim,
                const char* query_text, uint32_t access_mask, uint32_t k,
                rag_hit* out) noexcept {

@@ -33,6 +33,9 @@ void rag_index_free(rag_index* idx) RAG_NOEXCEPT;
 /* The vector length the index was built with, or 0 when idx is NULL. */
 uint32_t rag_index_dim(const rag_index* idx) RAG_NOEXCEPT;
 
+/* The number of chunks in the index, or 0 when idx is NULL. No search returns more hits. */
+uint32_t rag_index_count(const rag_index* idx) RAG_NOEXCEPT;
+
 /* Hybrid vector + BM25 search. Only chunks whose access bits intersect
    access_mask are considered, so private chunks never leave the engine for
    public callers. Writes up to k hits to out (sorted by fused score) and returns
