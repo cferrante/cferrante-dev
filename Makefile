@@ -7,7 +7,7 @@ GO_PKGS := $(shell go list ./... 2>/dev/null)
 SH_FILES := $(shell find . -name '*.sh' -not -path './.git/*')
 SHELLCHECK ?= shellcheck
 
-.PHONY: help tools css css-check test engine-test bench-engine bench-engine-scale bench-go dev lint fmt docs-check
+.PHONY: help tools css css-check jstest test engine-test bench-engine bench-engine-scale bench-go dev lint fmt docs-check
 
 ENGINE_BUILD := build/engine
 ENGINE_RELEASE := build/engine-release
@@ -24,7 +24,10 @@ css: tools ## Build web/dist/app.css with the Tailwind standalone CLI
 css-check: css ## Check the CSS budget (< 15 KB gzipped) and required classes
 	scripts/check-css.sh
 
-test: engine-test css-check ## Run all tests
+jstest: tools ## Run the frontend's JS tests under Deno with no permissions
+	build/tools/deno test --no-prompt web/js/
+
+test: engine-test css-check jstest ## Run all tests
 ifneq ($(GO_PKGS),)
 	go test -race ./...
 else
@@ -52,13 +55,13 @@ bench-engine-scale: ## Benchmark retrieval from 1k to 50k chunks (informational)
 bench-go: ## Benchmark the pure-Go vector baseline (informational)
 	go run ./engine/baseline/cmd/benchgo
 
-dev: ## Serve /chat locally over Ollama (qwen3:4b, nomic-embed-text); DEV_FLAGS=-invitee etc.
+dev: css ## Serve the page and /chat locally over Ollama; DEV_FLAGS=-invitee etc.
 	@# Built then run directly, not with `go run`: go run exits 1 on Ctrl+C even
 	@# when the server shuts down cleanly, so make would report a false error.
 	go build -o build/dev/server ./orchestrator/cmd/dev
 	build/dev/server $(DEV_FLAGS)
 
-lint: ## Check formatting, run go vet and shellcheck
+lint: tools ## Check formatting, run go vet, shellcheck and deno lint
 	@unformatted=$$(gofmt -l .); \
 	if [ -n "$$unformatted" ]; then echo "gofmt needed:"; echo "$$unformatted"; exit 1; fi
 ifneq ($(GO_PKGS),)
@@ -66,6 +69,8 @@ ifneq ($(GO_PKGS),)
 endif
 	@# -x follows `source`; SCRIPTDIR resolves it relative to each script.
 	$(SHELLCHECK) -x -P SCRIPTDIR $(SH_FILES)
+	build/tools/deno lint web/js/
+	build/tools/deno fmt --check --line-width 110 web/js/
 
 fmt: ## Format Go code in place
 	gofmt -w .
