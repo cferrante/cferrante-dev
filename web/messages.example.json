@@ -1,0 +1,11 @@
+{
+  "network": "I can't reach the {assistant} right now. Check your connection, then try again.",
+  "timeout": "That took too long to answer. Please try again.",
+  "model_unavailable": "The AI model isn't available right now. Please try again in a moment.",
+  "retrieval_failed": "I couldn't search the portfolio just now. Please try again.",
+  "rate_limited": "You've asked a lot in a short time. Please wait a few minutes.",
+  "tool_limit": "That needed too many steps. Try asking more simply.",
+  "incomplete": "The answer was cut off. Please try again.",
+  "session_ended": "Your session has ended. Please sign in again.",
+  "server_error": "Something went wrong on our side. Please try again."
+}

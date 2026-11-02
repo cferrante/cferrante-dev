@@ -81,7 +81,7 @@ var allEnv = map[string]string{
 	"OLLAMA_BASE_URL": "http://gpu-box:11434", "EMBEDDER": "hash", "EMBED_MODEL": "mxbai-embed-large",
 	"EMBED_DIM": "1024", "CHAT_MODEL": "llama3.1", "REASONING_EFFORT": "medium", "DEV_INVITEE": "true",
 	"CONTACT_OPTIONS": "Use the form.", "AVAILABILITY": "Tue–Thu", "TURN_DEADLINE": "90s",
-	"WEB_DIR": "/site",
+	"WEB_DIR": "/site", "ASSISTANT_NAME": "Concierge",
 }
 
 func TestEnvironmentSetsEveryOption(t *testing.T) {
@@ -91,7 +91,7 @@ func TestEnvironmentSetsEveryOption(t *testing.T) {
 	}
 	want := config{addr: "127.0.0.1:9999", corpusDir: "/c", index: "/i.idx", ollamaURL: "http://gpu-box:11434",
 		embedder: "hash", embedModel: "mxbai-embed-large", embedDim: 1024, model: "llama3.1", effort: "medium", invitee: true,
-		contact: "Use the form.", availability: "Tue–Thu", deadline: 90 * time.Second, webDir: "/site"}
+		contact: "Use the form.", availability: "Tue–Thu", deadline: 90 * time.Second, webDir: "/site", assistant: "Concierge"}
 	if c != want {
 		t.Errorf("config\n got %+v\nwant %+v", c, want)
 	}

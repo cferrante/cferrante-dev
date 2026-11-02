@@ -7,7 +7,7 @@ GO_PKGS := $(shell go list ./... 2>/dev/null)
 SH_FILES := $(shell find . -name '*.sh' -not -path './.git/*')
 SHELLCHECK ?= shellcheck
 
-.PHONY: help tools css css-check jstest test engine-test bench-engine bench-engine-scale bench-go dev lint fmt docs-check
+.PHONY: help tools css site css-check jstest test engine-test bench-engine bench-engine-scale bench-go dev lint fmt docs-check
 
 ENGINE_BUILD := build/engine
 ENGINE_RELEASE := build/engine-release
@@ -20,6 +20,9 @@ tools: ## Fetch the pinned frontend tools (Tailwind, Deno) into build/tools, che
 
 css: tools ## Build web/dist/app.css with the Tailwind standalone CLI
 	build/tools/tailwindcss -i web/src/app.css -o web/dist/app.css --minify
+
+site: ## Write web/dist/config.js from SITE_NAME, ASSISTANT_NAME and MESSAGES_FILE (or .env)
+	go run ./orchestrator/cmd/siteconfig
 
 css-check: css ## Check the CSS budget (< 15 KB gzipped) and required classes
 	scripts/check-css.sh
@@ -55,7 +58,7 @@ bench-engine-scale: ## Benchmark retrieval from 1k to 50k chunks (informational)
 bench-go: ## Benchmark the pure-Go vector baseline (informational)
 	go run ./engine/baseline/cmd/benchgo
 
-dev: css ## Serve the page and /chat locally over Ollama; DEV_FLAGS=-invitee etc.
+dev: css site ## Serve the page and /chat locally over Ollama; DEV_FLAGS=-invitee etc.
 	@# Built then run directly, not with `go run`: go run exits 1 on Ctrl+C even
 	@# when the server shuts down cleanly, so make would report a false error.
 	go build -o build/dev/server ./orchestrator/cmd/dev

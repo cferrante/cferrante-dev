@@ -43,6 +43,7 @@ type config struct {
 	contact, availability               string        // tools' static answers
 	deadline                            time.Duration // whole-turn limit
 	webDir                              string        // the page (design §14)
+	assistant                           string        // the assistant's name, in the system prompt
 }
 
 // parse reads the configuration. Every option has an environment variable
@@ -63,6 +64,7 @@ func parse(args []string, getenv cfg.Getenv) (config, error) {
 	fs.BoolVar(&c.invitee, "invitee", env.Bool("DEV_INVITEE", false), "act as an invitee, who sees private chunks [DEV_INVITEE]")
 	fs.StringVar(&c.contact, "contact", env.String("CONTACT_OPTIONS", "Invitees can send a message through this chat."), "get_contact_options answer [CONTACT_OPTIONS]")
 	fs.DurationVar(&c.deadline, "turn-deadline", env.Duration("TURN_DEADLINE", 5*time.Minute), "whole-turn limit; generous because CPU inference is slow [TURN_DEADLINE]")
+	fs.StringVar(&c.assistant, "assistant", env.String("ASSISTANT_NAME", agent.DefaultAssistantName), "the assistant's name, also shown by the page [ASSISTANT_NAME]")
 	fs.StringVar(&c.webDir, "web", env.String("WEB_DIR", "web"), "directory of the page, served at / [WEB_DIR]")
 	fs.StringVar(&c.availability, "availability", env.String("AVAILABILITY", "Weekdays, office hours (not configured)."), "check_availability answer [AVAILABILITY]")
 	if err := env.Err(); err != nil {
@@ -126,7 +128,7 @@ func setup(ctx context.Context, c config, m model.Model, logw io.Writer) (http.H
 	outbox := &tools.MemoryOutbox{Log: logw}
 	a := &agent.Agent{Model: m, Retriever: r, Store: agent.NewMemoryStore(), Clock: clock.Real{},
 		Tools:   tools.New(tools.Static{ContactOptions: c.contact, Availability: c.availability}, outbox),
-		Pending: tools.NewMemoryPending(), Deadline: c.deadline}
+		Pending: tools.NewMemoryPending(), Deadline: c.deadline, AssistantName: c.assistant}
 	mux := http.NewServeMux()
 	mux.Handle("/chat", &server.Chat{Agent: a, Auth: auth.Fixed(caller), Clock: clock.Real{}})
 	mux.Handle("/", server.Static(c.webDir))
@@ -159,7 +161,7 @@ func main() {
 		defer cancel()
 		srv.Shutdown(shutdown)
 	}()
-	fmt.Printf("open http://%s/ in a browser\n", c.addr)
+	fmt.Printf("open http://%s/ in a browser to talk to the %s\n", c.addr, c.assistant)
 	fmt.Printf("serving http://%s/chat (model %s, effort %s, via Ollama at %s, invitee=%v); Ctrl+C to stop\n",
 		c.addr, c.model, c.effort, c.ollamaURL, c.invitee)
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
