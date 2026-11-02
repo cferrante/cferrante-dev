@@ -1,4 +1,4 @@
-# cferrante-dev — Agentic RAG Receptionist
+# cferrante-dev — Context Concierge (agentic RAG)
 
 > **Status: planning.** Nothing below is built yet. This README is the north star. The design
 > spec is in [docs/design.md](docs/design.md), the build order in [docs/plan.md](docs/plan.md),
@@ -6,8 +6,9 @@
 > [docs/benchmarks.md](docs/benchmarks.md), and every term is explained in
 > [docs/concepts.md](docs/concepts.md).
 
-A fast, intelligent, transparent AI receptionist for my portfolio site. Visitors ask questions about
-me and my work; the receptionist answers from my own documents ([RAG](docs/concepts.md#rag)), cites its sources, can take
+A fast, intelligent, transparent AI assistant for my portfolio site: the **Context Concierge** (the
+name is configurable, `ASSISTANT_NAME`). Visitors ask questions about me and my work; the
+Context Concierge answers from my own documents ([RAG](docs/concepts.md#rag)), cites its sources, can take
 actions through tools, and **shows its work**: you watch it think on the left and watch the backend
 act on the right, with real measured timings.
 

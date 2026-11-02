@@ -455,7 +455,7 @@ Both are JSON Lines (one JSON object per line), readable with Go's standard libr
 ```json
 {"id":"g-001","question":"What Go projects has he built?","caller":"anonymous",
  "expected_chunks":["proj-cferrante-dev#summary"],
- "expected_answer":"Mentions this receptionist's Go orchestrator ...",
+ "expected_answer":"Mentions this Context Concierge's Go orchestrator ...",
  "tags":["projects","go"]}
 ```
 
@@ -582,7 +582,15 @@ Plan Phase 4 builds it.
   `cache` step and no model call. Answers are hand-written until the judge (Phase 6) can generate
   and verify them.
 - **Session and errors:** the conversation id lives in `sessionStorage`, so a reload continues
-  the conversation; errors show in the stream, with Retry when `retryable`.
+  the conversation; errors show in the stream as a plain sentence per cause, with Retry when
+  trying again can help, and the raw code only in the console and `data-code`.
+- **Site config (build time):** `make site` (`orchestrator/cmd/siteconfig`) writes
+  `web/dist/config.js` from `SITE_NAME`, `ASSISTANT_NAME` (default "Context Concierge", also
+  used in the model's system prompt) and `MESSAGES_FILE`, an optional JSON file overriding the
+  friendly messages' wording (keys and defaults: `web/messages.example.json`; placeholders
+  `{assistant}` and `{site}`). Built in, not fetched, so the page stays static files. An unknown
+  or empty message key stops the build; values are JSON-escaped and only ever shown as text.
+  Wording is configurable; which errors offer Retry is not.
 - **Accessibility:** the answer region is `aria-live="polite"`; motion is off under
   [reduced motion](concepts.md#reduced-motion); everything works from the keyboard; the panes
   stack on narrow screens.
