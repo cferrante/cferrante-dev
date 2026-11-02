@@ -265,7 +265,14 @@ void         rag_builder_free(rag_builder* b);
 
 **Corpus and indexer** (`orchestrator/cmd/indexer`, plan step 3.4):
 
-- **Input:** Markdown files under `corpus/`, each starting with a front-matter block parsed by our
+- **Where the documents live (this repo is public):** public documents in `corpus/public/`,
+  committed and reviewed like code. Invitee-only documents in a separate **private** GitHub repo,
+  cloned locally into `corpus/private/` (git-ignored here) and checked out by CI with a read-only
+  deploy key (Phase 7). A CI check fails any PR that commits a corpus file marked
+  `access: invitee`. The built index and sidecar contain every chunk's text, private ones
+  included, so they are never committed or served as static files: they ship only inside the
+  Lambda package. `CORPUS_DIRS` lists the folders to index (`corpus/public:corpus/private`).
+- **Input:** Markdown files in those folders, each starting with a front-matter block parsed by our
   own small parser (no YAML library), one `key: value` per line between `---` lines:
   `title`, `url`, `access` (`public` or `invitee`). Unknown keys and a missing `access` are errors,
   so a private document can't be published by a typo.
@@ -492,8 +499,10 @@ Categories: `jailbreak`, `roleplay_escape`, `prompt_extraction`, `indirect_injec
 ### D1. Embedding model
 
 Bedrock Titan v2 (network call, ~pennies/year) vs in-process C++ embedding (MiniLM: no network
-hop, larger Lambda package and slower [cold start](concepts.md#cold-start)). Proposed: start with
-Titan, measure, revisit. Used in [§4](#4-model-layer).
+hop, larger Lambda package and slower [cold start](concepts.md#cold-start)). **Decided
+2026-11-02: Titan Text Embeddings v2 at 512 dimensions** in production (Ollama
+`nomic-embed-text` locally); revisit if the embedding call's latency or cost measures badly.
+Used in [§4](#4-model-layer).
 
 ### D2. Notification channel
 
@@ -507,8 +516,10 @@ Hand-rolled Go runner vs `goose` (adds a dependency). Used in
 
 ### D4. Thought stream fallback
 
-What the thought stream shows when the fallback model has no visible reasoning. Proposed: agent
-narration only. Relates to [§3](#3-streaming-protocol-sse) and [§4](#4-model-layer).
+What the thought stream shows when the fallback model has no visible reasoning. **Decided
+2026-11-02: agent narration only.** The router tells the agent the moment it falls back, and the
+stream says so ("Groq is busy, so Bedrock Nova Lite is answering; it doesn't show its
+reasoning"), next to the card's `status: fallback`. Relates to [§3](#3-streaming-protocol-sse) and [§4](#4-model-layer).
 
 ### D5. Lambda architecture
 
