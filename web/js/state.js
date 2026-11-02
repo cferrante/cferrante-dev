@@ -12,6 +12,7 @@ export function initialState(config = {}) {
     conversationId: "",
     error: null, // {code, message, retryable}: message is the friendly one
     cards: [], // action cards: [{id, kind, label, state, durationMs, detail}]
+    citations: [], // [{n, chunk_id, title, url}] for the current answer
     // Confirm cards, one per proposed action:
     // [{actionId, tool, summary, expiresAtMs, status, outcome}], where status is
     // pending | confirming | done | expired | failed. A card still waiting stays
@@ -30,6 +31,7 @@ export function reduce(state, name, data) {
     case "ask":
       return {
         ...state,
+        citations: [],
         status: "streaming",
         question: data.message,
         thoughts: [],
@@ -54,6 +56,17 @@ export function reduce(state, name, data) {
       }
       return { ...state, thoughts: [...state.thoughts, { source: data.source, text: data.text }] };
     }
+    case "citation":
+      if (state.citations.some((c) => c.n === data.n)) return state;
+      return {
+        ...state,
+        citations: [...state.citations, {
+          n: data.n,
+          chunk_id: data.chunk_id,
+          title: data.title,
+          url: data.url,
+        }],
+      };
     case "token":
       return { ...state, answer: state.answer + data.text };
     case "done":
@@ -84,6 +97,7 @@ export function reduce(state, name, data) {
       if (!p) return state;
       return {
         ...state,
+        citations: [],
         status: "streaming",
         question: `You confirmed: ${p.summary}`,
         thoughts: [],

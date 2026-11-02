@@ -21,6 +21,10 @@
       <div class="space-y-2 border-t border-term-line px-4 py-3">
         <p id="asked" class="text-term-dim"></p>
         <p id="answer" aria-live="polite" class="whitespace-pre-wrap leading-relaxed"></p>
+        <div id="sources-block" hidden class="text-xs text-term-dim">
+          <h2 class="mt-1">Sources</h2>
+          <ol id="sources" class="space-y-0.5"></ol>
+        </div>
         <div class="flex items-center gap-3">
           <p id="status" role="status" class="text-term-dim data-[state=error]:text-term-error data-[state=streaming]:animate-pulse motion-reduce:animate-none"></p>
           <button id="retry" type="button" hidden
@@ -33,6 +37,9 @@
       <!-- Confirm cards (design §6, §14): one per proposed action; nothing is
            sent until its Confirm. Rendered from #proposal-template. -->
       <ol id="proposals" aria-live="polite" class="mx-4 space-y-2 empty:hidden"></ol>
+
+      <!-- Suggestion chips: stored, pre-checked answers that need no model call. -->
+      <div id="chips" aria-label="Suggested questions" class="flex flex-wrap gap-2 px-4 pb-2 empty:hidden"></div>
 
       <form id="ask" class="flex gap-2 border-t border-term-line px-4 py-3">
         <label for="question" class="sr-only">Your question</label>

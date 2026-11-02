@@ -21,6 +21,7 @@ const KIND = {
 
 export function cardTitle(card) {
   const kind = KIND[card.kind] || card.kind;
+  if (card.kind === "cache") return kind;
   if (card.kind === "inference") {
     const provider = card.detail && card.detail.provider;
     return provider ? `${kind} (${provider})` : kind;
@@ -45,6 +46,8 @@ export function cardDetails(card) {
         .concat(d.stop_reason && d.stop_reason !== "stop" ? [`stopped: ${d.stop_reason}`] : [])
         .filter(Boolean);
     }
+    case "cache":
+      return [d.hit ? "pre-verified · no model call" : "not available"];
     case "tool":
       if (d.authorized === false) return ["not authorized"];
       if (d.confirmation === "requested") return ["waiting for your confirmation"];

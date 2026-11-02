@@ -70,3 +70,9 @@ Deno.test("the inference card says why the model stopped, unless it finished nor
   assertEquals(cardDetails({ kind: "inference", detail: { ...base, stop_reason: "stop" } }).length, 3);
   assertEquals(cardDetails({ kind: "inference", detail: base }).length, 3);
 });
+
+Deno.test("a stored answer's card says no model was called", () => {
+  assertEquals(cardTitle({ kind: "cache", label: "Stored answer" }), "Stored answer");
+  assertEquals(cardDetails({ kind: "cache", detail: { hit: true } }), ["pre-verified · no model call"]);
+  assertEquals(cardDetails({ kind: "cache", detail: { hit: false } }), ["not available"]);
+});
