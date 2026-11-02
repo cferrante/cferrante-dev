@@ -30,25 +30,9 @@
         </div>
       </div>
 
-      <!-- The Confirm card (design §6, §14): shown when the model proposes an
-           action; nothing is sent until Confirm. data-status drives styling. -->
-      <section id="proposal" hidden aria-live="polite" aria-labelledby="proposal-title"
-               class="mx-4 mb-3 rounded border border-term-warn bg-term-panel p-3 data-[status=done]:border-term-accent data-[status=expired]:border-term-line data-[status=failed]:border-term-error">
-        <h2 id="proposal-title" class="font-bold text-term-warn"></h2>
-        <p id="proposal-summary" class="mt-1 whitespace-pre-wrap"></p>
-        <p id="proposal-outcome" class="mt-1 text-term-dim"></p>
-        <div class="mt-2 flex items-center gap-2">
-          <button id="confirm" type="button"
-                  class="rounded border border-term-accent px-3 py-1 text-term-accent hover:bg-term-bg focus-visible:outline-2 focus-visible:outline-term-accent disabled:opacity-50">
-            Confirm
-          </button>
-          <button id="dismiss" type="button"
-                  class="rounded border border-term-line px-3 py-1 text-term-fg hover:bg-term-bg focus-visible:outline-2 focus-visible:outline-term-accent">
-            Not now
-          </button>
-          <span id="proposal-time" class="ml-auto tabular-nums text-term-dim"></span>
-        </div>
-      </section>
+      <!-- Confirm cards (design §6, §14): one per proposed action; nothing is
+           sent until its Confirm. Rendered from #proposal-template. -->
+      <ol id="proposals" aria-live="polite" class="mx-4 space-y-2 empty:hidden"></ol>
 
       <form id="ask" class="flex gap-2 border-t border-term-line px-4 py-3">
         <label for="question" class="sr-only">Your question</label>
@@ -68,6 +52,27 @@
       <p id="no-cards" class="text-term-dim">Each backend step appears here as it runs.</p>
     </section>
   </main>
+
+  <!-- One template per Confirm card. data-status (pending | confirming | done
+       | expired | failed) drives the styling. -->
+  <template id="proposal-template">
+    <li class="mb-1 rounded border border-term-warn bg-term-panel p-3 data-[status=done]:border-term-accent data-[status=expired]:border-term-line data-[status=failed]:border-term-error">
+      <h2 data-role="title" class="font-bold text-term-warn"></h2>
+      <p data-role="summary" class="mt-1 whitespace-pre-wrap"></p>
+      <p data-role="outcome" class="mt-1 text-term-dim"></p>
+      <div class="mt-2 flex items-center gap-2">
+        <button data-role="confirm" type="button"
+                class="rounded border border-term-accent px-3 py-1 text-term-accent hover:bg-term-bg focus-visible:outline-2 focus-visible:outline-term-accent disabled:opacity-50">
+          Confirm
+        </button>
+        <button data-role="dismiss" type="button"
+                class="rounded border border-term-line px-3 py-1 text-term-fg hover:bg-term-bg focus-visible:outline-2 focus-visible:outline-term-accent">
+          Not now
+        </button>
+        <span data-role="time" class="ml-auto tabular-nums text-term-dim"></span>
+      </div>
+    </li>
+  </template>
 
   <!-- One template for every action card (README conventions). data-state
        (active | ok | error | fallback | skipped) drives all the styling. -->

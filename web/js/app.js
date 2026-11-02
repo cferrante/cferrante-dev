@@ -25,13 +25,8 @@ const els = {
   cards: $("cards"),
   noCards: $("no-cards"),
   cardTemplate: $("card-template"),
-  proposal: $("proposal"),
-  proposalTitle: $("proposal-title"),
-  proposalSummary: $("proposal-summary"),
-  proposalOutcome: $("proposal-outcome"),
-  proposalTime: $("proposal-time"),
-  confirm: $("confirm"),
-  dismiss: $("dismiss"),
+  proposals: $("proposals"),
+  proposalTemplate: $("proposal-template"),
 };
 
 const proposalTitle = {
@@ -87,7 +82,7 @@ function render() {
   els.status.dataset.code = state.error ? state.error.code : "";
   els.retry.hidden = !(state.status === "error" && state.error.retryable && state.question);
   renderCards();
-  renderProposal();
+  renderProposals();
   els.thoughts.scrollTop = els.thoughts.scrollHeight;
 }
 
@@ -123,31 +118,41 @@ function renderCards() {
   els.noCards.hidden = state.cards.length > 0;
 }
 
-function renderProposal() {
-  const p = state.proposal;
-  els.proposal.hidden = !p;
-  if (!p) return;
-  const left = secondsLeft(p, Date.now());
-  const status = p.status === "pending" && left === 0 ? "expired" : p.status;
-  els.proposal.dataset.status = status;
-  els.proposalTitle.textContent = proposalTitle[status];
-  els.proposalSummary.textContent = p.summary;
-  els.proposalOutcome.textContent = status === "expired" && !p.outcome
-    ? "Nothing was sent. Ask again if you still want it."
-    : p.outcome;
-  const waiting = status === "pending";
-  els.confirm.hidden = els.dismiss.hidden = !waiting;
-  els.confirm.disabled = state.status === "streaming";
-  els.proposalTime.textContent = waiting
-    ? `expires in ${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`
-    : "";
+function renderProposals() {
+  const nodes = els.proposals.children;
+  const now = Date.now();
+  state.proposals.forEach((p, i) => {
+    let li = nodes[i];
+    if (!li || li.dataset.actionId !== p.actionId) {
+      li = els.proposalTemplate.content.firstElementChild.cloneNode(true);
+      li.dataset.actionId = p.actionId;
+      if (nodes[i]) nodes[i].replaceWith(li);
+      else els.proposals.append(li);
+    }
+    const left = secondsLeft(p, now);
+    const status = p.status === "pending" && left === 0 ? "expired" : p.status;
+    li.dataset.status = status;
+    const part = (role) => li.querySelector(`[data-role="${role}"]`);
+    part("title").textContent = proposalTitle[status];
+    part("summary").textContent = p.summary;
+    part("outcome").textContent = status === "expired" && !p.outcome
+      ? "Nothing was sent. Ask again if you still want it."
+      : p.outcome;
+    const waiting = status === "pending";
+    part("confirm").hidden = part("dismiss").hidden = !waiting;
+    part("confirm").disabled = state.status === "streaming";
+    part("time").textContent = waiting
+      ? `expires in ${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`
+      : "";
+  });
+  while (nodes.length > state.proposals.length) nodes[nodes.length - 1].remove();
 }
 
 // Active cards show their elapsed time ticking until the server's figure
 // arrives; tick only while something is running.
 setInterval(() => {
   if (state.cards.some((c) => c.durationMs === null)) renderCards();
-  if (state.proposal && state.proposal.status === "pending") renderProposal();
+  if (state.proposals.some((p) => p.status === "pending")) renderProposals();
 }, 100);
 
 // Hundreds of reasoning events arrive per answer; repaint at most once per
@@ -199,7 +204,7 @@ async function send(start, startData, body) {
 
 function ask(message) {
   if (!message) return;
-  send("ask", { message }, () => ({ conversation_id: state.conversationId, message }));
+  send("ask", { message, now_ms: Date.now() }, () => ({ conversation_id: state.conversationId, message }));
 }
 
 els.form.addEventListener("submit", (e) => {
@@ -210,7 +215,13 @@ els.form.addEventListener("submit", (e) => {
 });
 
 els.retry.addEventListener("click", () => lastRequest && send(...lastRequest));
-els.confirm.addEventListener("click", () => send("confirm", {}, () => confirmBody(state)));
-els.dismiss.addEventListener("click", () => apply("dismiss", {}));
+// One listener for every Confirm card's buttons.
+els.proposals.addEventListener("click", (e) => {
+  const button = e.target.closest("button[data-role]");
+  const actionId = button && button.closest("li").dataset.actionId;
+  if (!actionId) return;
+  if (button.dataset.role === "confirm") send("confirm", { actionId }, () => confirmBody(state, actionId));
+  if (button.dataset.role === "dismiss") apply("dismiss", { actionId });
+});
 
 render();
