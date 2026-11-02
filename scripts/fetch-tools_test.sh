@@ -34,7 +34,7 @@ check "nothing is left behind" empty_dir "$work/bad"
 
 # 2. Too little free disk stops before any download.
 : > "$FAKE_LOG"
-if TOOLS_DIR="$work/full" TOOLS_MIN_FREE_KB=999999999999 "$here/fetch-tools.sh" >/dev/null 2>"$work/err"; then status=0; else status=$?; fi
+if TOOLS_DIR="$work/full" TOOLS_MIN_FREE_KB=9999999999999 "$here/fetch-tools.sh" >/dev/null 2>"$work/err"; then status=0; else status=$?; fi
 check "low disk space fails" [ "$status" -ne 0 ]
 check "it says why" grep -q "free" "$work/err"
 check "and downloads nothing" [ ! -s "$FAKE_LOG" ]
