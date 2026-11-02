@@ -247,7 +247,7 @@ func TestToolRoundsAreLimited(t *testing.T) {
 func TestSystemPromptExplainsToolsOnlyWhenOffered(t *testing.T) {
 	h := newToolHarness(say("ok"))
 	h.turn(t, context.Background(), invitee, TurnRequest{Message: "q"})
-	if sys := h.model.Requests()[0].System; !strings.Contains(sys, "until the visitor confirms") {
+	if sys := flat(h.model.Requests()[0].System); !strings.Contains(sys, "until the visitor confirms") {
 		t.Errorf("system prompt with tools lacks the confirmation rule:\n%s", sys)
 	}
 	plain := newHarness(&fake.Model{Name: "groq", Events: answer("ok")}, &fakeRetriever{chunks: twoChunks})
@@ -279,3 +279,24 @@ func TestTurnDeadlineIsConfigurable(t *testing.T) {
 		t.Fatal("didn't end at the configured deadline")
 	}
 }
+
+// Your click-through, step 6: llama3.1 put an ordinary answer into
+// send_message. The guidance now limits action tools to explicit requests.
+func TestToolGuidanceLimitsActionsToExplicitRequests(t *testing.T) {
+	h := newToolHarness(say("ok"))
+	h.turn(t, context.Background(), invitee, TurnRequest{Message: "q"})
+	sys := flat(h.model.Requests()[0].System)
+	for _, want := range []string{
+		"only when the visitor's latest message explicitly asks",
+		"Never put your answer to a question into a message",
+		"call the tool instead of describing",
+	} {
+		if !strings.Contains(sys, want) {
+			t.Errorf("tool guidance lacks %q:\n%s", want, sys)
+		}
+	}
+}
+
+// flat collapses whitespace: the prompt is wrapped for reading, and the
+// model doesn't care where its lines break.
+func flat(s string) string { return strings.Join(strings.Fields(s), " ") }

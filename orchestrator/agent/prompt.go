@@ -17,10 +17,14 @@ plainly instead of guessing. Keep answers short and friendly.`
 // toolGuidance is appended to the system prompt when tools are offered.
 const toolGuidance = `
 
-You may also use the tools offered to help the visitor, for example to share
-contact options or to send the owner a message on the visitor's behalf.
-Actions that send something only happen after the visitor presses Confirm:
-never say a message was sent or a meeting requested until the visitor confirms.`
+You can also use tools. get_contact_options and check_availability may be used
+whenever they help answer. Use send_message or request_meeting only when the
+visitor's latest message explicitly asks to send a message or request a
+meeting; otherwise just answer. Never put your answer to a question into a
+message. When you decide to use a tool, call the tool instead of describing the
+call in your reply. Actions that send something only happen after the visitor
+presses Confirm: never say a message was sent or a meeting requested until the
+visitor confirms.`
 
 // prompt builds the model request: system prompt, earlier turns, then the
 // question with the retrieved passages numbered 1..k so [n] refers to chunks[n-1].
