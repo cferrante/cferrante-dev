@@ -125,7 +125,8 @@ Deno.test("a new question clears the cards", () => {
 });
 
 Deno.test("errors are made friendly, and the question is kept for Retry", () => {
-  let s = reduce(initialState(), "ask", { message: "How does Alpha search?" });
+  const config = { siteName: "cferrante.dev", assistantName: "Context Concierge", messages: {} };
+  let s = reduce(initialState(config), "ask", { message: "How does Alpha search?" });
   s = reduce(s, "error", { code: "timeout", message: "the answer took too long", retryable: true });
   assertEquals(s.error, {
     code: "timeout",
@@ -136,6 +137,18 @@ Deno.test("errors are made friendly, and the question is kept for Retry", () => 
   s = reduce(s, "error", { code: "network", message: "Failed to fetch" });
   assertEquals(
     s.error.message,
-    "I can't reach the receptionist right now. Check your connection, then try again.",
+    "I can't reach the Context Concierge right now. Check your connection, then try again.",
   );
+});
+
+Deno.test("the site config travels in the state and shapes error wording", () => {
+  const config = {
+    siteName: "x.org",
+    assistantName: "Concierge",
+    messages: { timeout: "{assistant} gave up." },
+  };
+  let s = initialState(config);
+  assertEquals(s.config, config);
+  s = reduce(reduce(s, "ask", { message: "q" }), "error", { code: "timeout" });
+  assertEquals(s.error.message, "Concierge gave up.");
 });

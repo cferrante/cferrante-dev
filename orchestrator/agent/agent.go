@@ -52,11 +52,13 @@ type Agent struct {
 	Retriever Retriever
 	Store     ConversationStore
 	Clock     clock.Clock
-	TopK      int                  // passages per turn; default 5
-	Deadline  time.Duration        // whole-turn limit; default TurnDeadline
-	Tools     tools.Registry       // nil: no tools offered
-	Pending   tools.PendingActions // required when Tools has side effects
-	NewID     func() string        // conversation ids; default 128 random bits
+	TopK      int           // passages per turn; default 5
+	Deadline  time.Duration // whole-turn limit; default TurnDeadline
+	// AssistantName is what the model is told it is; default "Context Concierge".
+	AssistantName string
+	Tools         tools.Registry       // nil: no tools offered
+	Pending       tools.PendingActions // required when Tools has side effects
+	NewID         func() string        // conversation ids; default 128 random bits
 }
 
 var errDeadline = errors.New("agent: turn deadline exceeded")
@@ -114,6 +116,7 @@ func (a *Agent) Turn(ctx context.Context, caller auth.Caller, req TurnRequest, w
 	// MaxToolRounds rounds (design §3). Layer 1 of authorization: the model
 	// is only shown the tools this caller may use (design §6).
 	mreq := prompt(chunks, history, req.Message)
+	mreq.System = named(mreq.System, a.AssistantName)
 	mreq.Tools = a.Tools.For(caller)
 	if len(mreq.Tools) > 0 {
 		mreq.System += toolGuidance
