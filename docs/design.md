@@ -582,10 +582,18 @@ Plan Phase 4 builds it.
   nothing is sent, and the action expires. Confirmation refusals never offer Retry;
   Retry after a network failure repeats the last request, which is safe because an action runs
   at most once.
-- **Suggested questions:** chips come from the server's stored answers file (id, question,
-  answer, cited chunk ids, access). A `suggested_id` request streams the stored answer with a
-  `cache` step and no model call. Answers are hand-written until the judge (Phase 6) can generate
-  and verify them.
+- **Suggested questions:** chips come from `GET /suggested` (id and question only, filtered to
+  what the caller may see). Answers live in a JSON file (`SUGGESTED_FILE`: id, question, answer,
+  cited chunk ids, access), checked at startup: unknown fields, duplicate ids, empty text,
+  unknown chunks and `[n]` past the citations all stop the server, and so does a public answer
+  citing an invitee-only chunk, which would show private text to every visitor. A `suggested_id`
+  request streams the stored answer with a `cache` step and no retrieval or model call; one the
+  caller may not see is answered like a missing one (`suggestion_not_found`). Answers are
+  hand-written until the judge (Phase 6) can generate and verify them.
+- **Citations on the page:** `[n]` becomes a link (the whole `[1]`, or each number in `[1, 2]`)
+  only for a citation the server sent with a same-site path or `https:` URL; anything else,
+  including `javascript:`, `data:`, `http:` and `//other-host`, stays text. A Sources list
+  follows the answer. Links open in a new tab so the conversation stays.
 - **Session and errors:** the conversation id lives in `sessionStorage`, so a reload continues
   the conversation; errors show in the stream as a plain sentence per cause, with Retry when
   trying again can help, and the raw code only in the console and `data-code`.
