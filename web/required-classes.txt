@@ -1,0 +1,8 @@
+# Classes the page depends on; scripts/check-css.sh fails if Tailwind didn't
+# generate one. Add a class here when JS or a variant depends on it.
+bg-term-bg
+text-term-fg
+font-mono
+grid
+md:grid-cols-2
+md:border-r
