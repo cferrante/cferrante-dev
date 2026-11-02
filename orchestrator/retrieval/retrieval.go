@@ -198,3 +198,14 @@ func (r *Retriever) Retrieve(ctx context.Context, query string, mask uint32, k i
 
 // Close frees the index.
 func (r *Retriever) Close() error { return r.index.Close() }
+
+// Chunk finds a chunk by its id, with its access ("public" or "invitee"); the
+// suggestions store uses it to check citations at startup.
+func (r *Retriever) Chunk(id string) (agent.Chunk, string, bool) {
+	for _, c := range r.chunks {
+		if c.ID == id {
+			return agent.Chunk{ID: c.ID, Title: c.Title, URL: c.URL, Text: c.Text}, c.Access, true
+		}
+	}
+	return agent.Chunk{}, "", false
+}
