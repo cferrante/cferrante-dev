@@ -226,6 +226,19 @@ Site stays private (unlisted, chat behind a temporary allow-list) until M5.
 
 ---
 
+## Known issues (deferred)
+
+Found in click-throughs and accepted for now; each names the phase that should take it. Remove a
+row when it's fixed, with a review-log entry saying how.
+
+| Found | Issue | Take it in |
+|---|---|---|
+| 2026-11-02 (4.4) | Local models misuse tools: llama3.1 puts answers into `send_message`, ignores some explicit requests, and invents `reply_to` values; qwen3:4b can't settle on a tool call within 5 minutes on the CPU. The Confirm card prevents harm | 5 (gpt-oss-120b on Groq), 6 (`tool_abuse` and golden evals measure it) |
+| 2026-11-02 (4.4) | `reply_to` is free text, so a model can fill it with anything | 6 or 8: validate it (an email address or handle) once real invitees use it |
+| 2026-11-02 (4.3a) | Local answers take 30–100 s and vary with CPU load; a busy CPU once produced an empty answer (now reported as `empty_answer`) | 5: Groq for real answers; local stays for development |
+| 2026-11-02 (4.3a) | The README's status banner still says nothing is built | Next docs change |
+| 2026-11-02 (3.5) | The `indexer` command takes flags only, not environment variables like `make dev` | When the indexer is next changed (Phase 7 deploy at the latest) |
+
 ## Deviations log
 
 Any change from this plan: what changed, why, and which step.
