@@ -79,11 +79,11 @@ func TestChatRejectsBadRequests(t *testing.T) {
 		body   string
 		status int
 	}{
-		"not JSON":      {`{"message":`, 400},
-		"empty":         {`{"message":"   "}`, 400},
-		"too long":      {`{"message":"` + strings.Repeat("é", MaxMessage+1) + `"}`, 400},
-		"huge body":     {`{"message":"hi","pad":"` + strings.Repeat("x", 100_000) + `"}`, 400},
-		"confirm early": {`{"message":"yes","confirm":{"action_id":"a1"}}`, 501},
+		"not JSON":              {`{"message":`, 400},
+		"empty":                 {`{"message":"   "}`, 400},
+		"too long":              {`{"message":"` + strings.Repeat("é", MaxMessage+1) + `"}`, 400},
+		"huge body":             {`{"message":"hi","pad":"` + strings.Repeat("x", 100_000) + `"}`, 400},
+		"confirm without an id": {`{"confirm":{"action_id":""}}`, 400},
 	} {
 		if resp := post(t, srv, tc.body); resp.StatusCode != tc.status {
 			t.Errorf("%s: status %d, want %d", name, resp.StatusCode, tc.status)
@@ -205,5 +205,16 @@ func TestChatPassesTheCallerAndCancelsTheTurnWhenTheClientLeaves(t *testing.T) {
 	}
 	if rec.caller.ID != "u1" || rec.req.ConversationID != "c_1" || rec.req.Message != "hello" {
 		t.Errorf("turn got caller %+v, request %+v", rec.caller, rec.req)
+	}
+}
+
+func TestConfirmationIsPassedToTheTurnWithoutAMessage(t *testing.T) {
+	rec := &recorder{ended: make(chan error, 1), release: make(chan struct{})}
+	close(rec.release) // the turn returns at once
+	srv := httptest.NewServer(&Chat{Agent: rec, Auth: auth.Fixed{}, Clock: clock.Real{}})
+	defer srv.Close()
+	resp := post(t, srv, `{"conversation_id":"c_1","confirm":{"action_id":"a_123"}}`)
+	if resp.StatusCode != 200 || rec.req.ConfirmActionID != "a_123" || rec.req.ConversationID != "c_1" {
+		t.Errorf("status %d, turn request %+v", resp.StatusCode, rec.req)
 	}
 }

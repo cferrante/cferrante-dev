@@ -32,6 +32,7 @@ import (
 	"github.com/cferrante/cferrante-dev/orchestrator/model/oai"
 	"github.com/cferrante/cferrante-dev/orchestrator/retrieval"
 	"github.com/cferrante/cferrante-dev/orchestrator/server"
+	"github.com/cferrante/cferrante-dev/orchestrator/tools"
 )
 
 type config struct {
@@ -39,6 +40,8 @@ type config struct {
 	embedder, embedModel, model, effort string
 	embedDim                            int // 0: the embedder's own default
 	invitee                             bool
+	contact, availability               string        // tools' static answers
+	deadline                            time.Duration // whole-turn limit
 }
 
 // parse reads the configuration. Every option has an environment variable
@@ -55,12 +58,21 @@ func parse(args []string, getenv cfg.Getenv) (config, error) {
 	fs.StringVar(&c.embedModel, "embed-model", env.String("EMBED_MODEL", "nomic-embed-text"), "Ollama embedding model [EMBED_MODEL]")
 	fs.IntVar(&c.embedDim, "embed-dim", env.Int("EMBED_DIM", 0), "embedding size; 0 = 768 for ollama, 256 for hash [EMBED_DIM]")
 	fs.StringVar(&c.model, "model", env.String("CHAT_MODEL", "qwen3:4b"), "Ollama chat model [CHAT_MODEL]")
-	fs.StringVar(&c.effort, "effort", env.String("REASONING_EFFORT", "low"), "reasoning effort; low keeps qwen3's thinking short on a CPU [REASONING_EFFORT]")
+	fs.StringVar(&c.effort, "effort", env.String("REASONING_EFFORT", "low"), "reasoning effort; low keeps qwen3's thinking short on a CPU; none for models without thinking [REASONING_EFFORT]")
 	fs.BoolVar(&c.invitee, "invitee", env.Bool("DEV_INVITEE", false), "act as an invitee, who sees private chunks [DEV_INVITEE]")
+	fs.StringVar(&c.contact, "contact", env.String("CONTACT_OPTIONS", "Invitees can send a message through this chat."), "get_contact_options answer [CONTACT_OPTIONS]")
+	fs.DurationVar(&c.deadline, "turn-deadline", env.Duration("TURN_DEADLINE", 5*time.Minute), "whole-turn limit; generous because CPU inference is slow [TURN_DEADLINE]")
+	fs.StringVar(&c.availability, "availability", env.String("AVAILABILITY", "Weekdays, office hours (not configured)."), "check_availability answer [AVAILABILITY]")
 	if err := env.Err(); err != nil {
 		return c, err
 	}
-	return c, fs.Parse(args)
+	if err := fs.Parse(args); err != nil {
+		return c, err
+	}
+	if c.effort == "none" { // for models without thinking, which reject the field
+		c.effort = ""
+	}
+	return c, nil
 }
 
 func embedderFor(c config) (embed.Embedder, error) {
@@ -107,7 +119,12 @@ func setup(ctx context.Context, c config, m model.Model, logw io.Writer) (http.H
 	if c.invitee {
 		caller = auth.Caller{ID: "dev-invitee", Groups: []string{auth.InviteeGroup}}
 	}
-	a := &agent.Agent{Model: m, Retriever: r, Store: agent.NewMemoryStore(), Clock: clock.Real{}}
+	// The outbox prints what confirmed actions send; Postgres and the
+	// notification channel [D2] replace it later.
+	outbox := &tools.MemoryOutbox{Log: logw}
+	a := &agent.Agent{Model: m, Retriever: r, Store: agent.NewMemoryStore(), Clock: clock.Real{},
+		Tools:   tools.New(tools.Static{ContactOptions: c.contact, Availability: c.availability}, outbox),
+		Pending: tools.NewMemoryPending(), Deadline: c.deadline}
 	mux := http.NewServeMux()
 	mux.Handle("/chat", &server.Chat{Agent: a, Auth: auth.Fixed(caller), Clock: clock.Real{}})
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { io.WriteString(w, "ok\n") })
