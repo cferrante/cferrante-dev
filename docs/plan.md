@@ -38,10 +38,11 @@ marked 🧑 need you (accounts, payments, decisions); everything else I can driv
 | Item | Needed by | Status |
 |---|---|---|
 | 🧑 Site domain (decides transfer vs register, ≈ $15/yr) | 7.2 | ✅ `cferrante.dev` registered in Route 53 |
-| 🧑 [D1] embedding model | 5.3 | proposed: Titan v2 |
+| 🧑 [D1] embedding model | 5.3 | ✅ Titan v2, 512 dimensions (2026-11-02) |
 | 🧑 [D2] notification channel | 8.4 | open |
 | 🧑 [D3] migrations tool | 9.1 | open |
-| 🧑 [D4] thought stream on fallback | 5.2 | proposed: narration only |
+| 🧑 [D4] thought stream on fallback | 5.2 | ✅ narration only (2026-11-02) |
+| 🧑 Real corpus: public docs in `corpus/public/`, invitee docs in a private repo | 6 (golden set) | not started; can run alongside Phase 5 |
 | 🧑 [D5] Lambda architecture | 7.6 | proposed: x86_64, revisited by measurement in 7.6 |
 | 🧑 Doc-link checker in CI? | 0.2 | ✅ yes (done) |
 | 🧑 JS test runner for the frontend (no npm toolchain) | 4.2 | ✅ Deno, pinned (2026-11-02); Node rejected for its security upkeep |
@@ -149,7 +150,7 @@ Cost: $0. The only downloads are the two Ollama models in 3.5 (≈ 2.9 GB; RAM i
 
 ## Phase 4 — Frontend (M2, $0)
 
-**✅ Built 2026-11-02** (PRs #49–#56 and the 4.5 PR); M2 once the 4.5 click-through passes.
+**✅ Done 2026-11-02** (PRs #49–#58). **M2 reached:** the full local experience passed your click-through.
 
 Contract: [design §14](design.md#14-frontend). Tools live in git-ignored `build/tools/`, fetched by
 a script that pins each version and verifies its checksum: the Tailwind v4 standalone CLI
@@ -168,14 +169,24 @@ a script that pins each version and verifies its checksum: the Tailwind v4 stand
 
 ## Phase 5 — Real models (≈ $0)
 
+Answers move from the laptop model to gpt-oss-120b on Groq, with Bedrock Nova Lite as the
+fallback and Titan v2 embeddings ([D1], [D4] decided). `make dev` can use them
+(`CHAT_PROVIDER=groq`, default `ollama`), reading the Groq key from SSM through your AWS SSO
+session: never `.env` or a flag. Every model setting is configurable (`GROQ_MODEL`,
+`GROQ_KEY_PARAM`, `BEDROCK_MODEL`, `AWS_REGION`, `TITAN_MODEL`, `EMBED_DIM`).
+
 | Step | Test that must fail first | Done when |
 |---|---|---|
-| **5.1** Groq provider (`model/groq`), recorded-response tests + opt-in live test | Recorded stream replay doesn't produce the expected events | Replays pass; live smoke passes on demand |
-| **5.2** Bedrock `ConverseStream` fallback adapter; [D4] applied | Recorded replay test | Router falls back to it on a simulated Groq 429 |
-| **5.3** Embeddings per [D1]; production index built | Test: query and index embedding model ids must match or startup fails | Index built with the production embedder |
-| **5.4** Prompt ordering + cache point; constrained judge output | Test: second identical-prefix request reports `cached_tokens > 0` (live, opt-in); judge rejects non-schema output | Cache hits visible on the inference card; judge always schema-valid |
+| **5.1** `secrets` package (SSM SecureString, read once, never logged), Groq in `make dev` via `model/oai`, `make smoke-groq` (opt-in live) | A fake SSM returns the key and an error; the key appears in no log or error; `CHAT_PROVIDER=groq` builds the router | `make dev` answers through Groq; the live smoke passes on demand |
+| **5.2** 🧑 Enable Bedrock model access (check script + steps); `ConverseStream` adapter behind a small event interface; [D4] narration through a router fallback callback | Events from one recorded live stream produce the right model events; a simulated Groq 429 makes Bedrock answer and the stream narrates it | `make dev` falls back live when Groq is forced to fail |
+| **5.3** 🧑 Enable Titan access; Titan v2 embedder; the indexer and `make dev` read `CORPUS_DIRS` and environment variables; corpus layout and guards | Titan request and response shape with a fake client; a nomic-built index is refused under Titan; several corpus folders index together; a committed `access: invitee` file fails the CI check | The fixture indexes with Titan; `corpus/private/` is git-ignored; the known issue about the indexer's flags is closed |
+| **5.4** Prompt caching visible; `ResponseSchema` for Groq (`json_schema`) | The stable prefix (system prompt, then tools) comes first; a Bedrock cache point follows the tools; schema output is parsed or rejected; opt-in live: a repeat request shows `cached_tokens > 0` | Cached tokens on the inference card; schema output always valid or an error (the judge itself is Phase 6) |
 
-Cost: Groq free tier; Bedrock and Titan in cents.
+🧑 alongside: write the real corpus (public in `corpus/public/`, invitee in the private repo) and
+its suggested answers; Phase 6's golden set needs it.
+
+Cost: Groq free tier ($0). Bedrock Nova Lite (fallback only) and Titan v2 are cents; prices are
+verified before you enable access, and the $1 budget alarm stays on.
 
 ## Phase 6 — Evals and safety (M3, $0 locally)
 
@@ -312,6 +323,8 @@ Any change from this plan: what changed, why, and which step.
 | 2026-11-02 | 4.3 | Errors are shown as plain sentences per cause (`messages.js`), with the code kept in the console and `data-code`; an unreachable server is its own case | Your click-through: "Error: Failed to fetch" is the browser's raw text. Visitors get a sentence and, when it helps, Retry; the raw detail stays available for debugging |
 | 2026-11-02 | 4.3a | Added step 4.3a: the assistant is called the **Context Concierge** (configurable), and the friendly messages' wording is configurable; README and [design §14](design.md#14-frontend) updated; the plan's dated log entries keep "receptionist" as history | Your request after the 4.3 click-through. Build-time config keeps the production page static; wording is configurable but Retry behaviour is not; a Go test keeps the generator's keys and the page's defaults in step |
 | 2026-11-02 | 4.5 | `GET /suggested` lists chips; the answers file is checked at startup (including that a public answer can't cite an invitee-only chunk); the retriever gained a chunk lookup by id; citations link the whole `[n]` and open in a new tab; a Sources list follows the answer | The leak check makes a dangerous mistake in a hand-written file impossible to ship; a bigger click target; links shouldn't lose the conversation |
+| 2026-11-02 | 5.x | Phase 5 rewritten: 5.1 is secrets plus wiring (`model/oai` already is the Groq client); real models usable from `make dev`; Bedrock tested through an event interface; [D1] Titan v2 at 512 and [D4] narration only decided | The plan predated step 3.5's shared client; trying the real speed locally needs no deploy; Bedrock's binary stream can't be replayed like Groq's text |
+| 2026-11-02 | 5.3 | Corpus layout: public documents in `corpus/public/`, invitee documents in a private repo cloned into git-ignored `corpus/private/`; a CI check rejects committed invitee files; index and sidecar ship only in the Lambda package ([design §5](design.md#5-retrieval-engine-c)) | This repo is public: the access mask protects the chat, not GitHub |
 
 ## Code review log
 
