@@ -7,7 +7,7 @@ GO_PKGS := $(shell go list ./... 2>/dev/null)
 SH_FILES := $(shell find . -name '*.sh' -not -path './.git/*')
 SHELLCHECK ?= shellcheck
 
-.PHONY: help test engine-test bench-engine bench-engine-scale bench-go dev lint fmt docs-check
+.PHONY: help tools css css-check test engine-test bench-engine bench-engine-scale bench-go dev lint fmt docs-check
 
 ENGINE_BUILD := build/engine
 ENGINE_RELEASE := build/engine-release
@@ -15,13 +15,24 @@ ENGINE_RELEASE := build/engine-release
 help: ## List targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-19s %s\n", $$1, $$2}'
 
-test: engine-test ## Run all tests
+tools: ## Fetch the pinned frontend tools (Tailwind, Deno) into build/tools, checksum-verified
+	scripts/fetch-tools.sh
+
+css: tools ## Build web/dist/app.css with the Tailwind standalone CLI
+	build/tools/tailwindcss -i web/src/app.css -o web/dist/app.css --minify
+
+css-check: css ## Check the CSS budget (< 15 KB gzipped) and required classes
+	scripts/check-css.sh
+
+test: engine-test css-check ## Run all tests
 ifneq ($(GO_PKGS),)
 	go test -race ./...
 else
 	@echo "test: no Go packages yet"
 endif
 	infra/bootstrap/aws/secret_test.sh
+	scripts/fetch-tools_test.sh
+	scripts/check-css_test.sh
 
 engine-test: ## Build and run the C++ engine tests with ASan and UBSan
 	cmake -S engine -B $(ENGINE_BUILD) -DCMAKE_BUILD_TYPE=Debug -DRAG_SANITIZE=ON >/dev/null

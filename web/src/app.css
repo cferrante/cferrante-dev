@@ -1,0 +1,21 @@
+/* The site's stylesheet: Tailwind v4 (standalone CLI, `make css`).
+   source() limits class scanning to web/, so Go and C++ files can't add CSS. */
+@import "tailwindcss" source("..");
+/* Never scan the required-classes list (it would generate every class it
+   checks for, so the check could never fail) or the built output. */
+@source not "../required-classes.txt";
+@source not "../dist";
+
+/* Design tokens: one place for the terminal palette and mono font
+   (concepts.md#design-tokens). */
+@theme {
+  --font-mono: ui-monospace, "SFMono-Regular", "Cascadia Mono", Menlo, Consolas, monospace;
+  --color-term-bg: #0d1117;
+  --color-term-panel: #161b22;
+  --color-term-line: #30363d;
+  --color-term-fg: #c9d1d9;
+  --color-term-dim: #8b949e;
+  --color-term-accent: #3fb950;
+  --color-term-warn: #d29922;
+  --color-term-error: #f85149;
+}
