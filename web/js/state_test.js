@@ -9,7 +9,7 @@ function run(events) {
 
 Deno.test("starts idle and empty", () => {
   const s = initialState();
-  assertEquals([s.status, s.thoughts, s.answer], ["idle", [], ""]);
+  assertEquals([s.status, s.thoughts, s.answer, s.cards], ["idle", [], "", []]);
 });
 
 Deno.test("model reasoning chunks join into one block; agent lines stay separate", () => {
@@ -42,11 +42,9 @@ Deno.test("an error ends the turn and keeps what arrived", () => {
     ["token", { text: "half" }],
     ["error", { code: "timeout", message: "the answer took too long", retryable: true }],
   ]);
-  assertEquals([s.status, s.answer, s.error], ["error", "half", {
-    code: "timeout",
-    message: "the answer took too long",
-    retryable: true,
-  }]);
+  // The wording is messages.js's job (tested there and below); here: the
+  // turn ends, keeps its partial answer, and remembers the code.
+  assertEquals([s.status, s.answer, s.error.code], ["error", "half", "timeout"]);
 });
 
 Deno.test("a new question clears the last answer but keeps the conversation", () => {
@@ -82,4 +80,62 @@ Deno.test("the reducer never mutates the previous state, for any event", () => {
 Deno.test("unknown events are ignored", () => {
   const s = initialState();
   assertEquals(reduce(s, "future_event", { x: 1 }), s);
+});
+
+Deno.test("step_start creates an active card; step_end fills it in place", () => {
+  const s = run([
+    ["step_start", { step_id: "retrieval", kind: "retrieval", label: "Hybrid search", t_ms: 0.1 }],
+    ["step_start", { step_id: "inference", kind: "inference", label: "Writing the answer", t_ms: 103 }],
+    ["step_end", { step_id: "retrieval", status: "ok", duration_ms: 102.7, detail: { hits: 4 } }],
+  ]);
+  assertEquals(s.cards, [
+    {
+      id: "retrieval",
+      kind: "retrieval",
+      label: "Hybrid search",
+      state: "ok",
+      durationMs: 102.7,
+      detail: { hits: 4 },
+    },
+    {
+      id: "inference",
+      kind: "inference",
+      label: "Writing the answer",
+      state: "active",
+      durationMs: null,
+      detail: null,
+    },
+  ]);
+});
+
+Deno.test("a fallback or error status becomes the card's state", () => {
+  const s = run([
+    ["step_start", { step_id: "a", kind: "inference", label: "x" }],
+    ["step_end", { step_id: "a", status: "fallback", duration_ms: 5, detail: { provider: "bedrock" } }],
+    ["step_start", { step_id: "b", kind: "tool", label: "y" }],
+    ["step_end", { step_id: "b", status: "error", duration_ms: 1, detail: { authorized: false } }],
+  ]);
+  assertEquals(s.cards.map((c) => c.state), ["fallback", "error"]);
+});
+
+Deno.test("a new question clears the cards", () => {
+  let s = run([["step_start", { step_id: "a", kind: "retrieval", label: "x" }]]);
+  s = reduce(s, "ask", { message: "next" });
+  assertEquals(s.cards, []);
+});
+
+Deno.test("errors are made friendly, and the question is kept for Retry", () => {
+  let s = reduce(initialState(), "ask", { message: "How does Alpha search?" });
+  s = reduce(s, "error", { code: "timeout", message: "the answer took too long", retryable: true });
+  assertEquals(s.error, {
+    code: "timeout",
+    message: "That took too long to answer. Please try again.",
+    retryable: true,
+  });
+  assertEquals(s.question, "How does Alpha search?");
+  s = reduce(s, "error", { code: "network", message: "Failed to fetch" });
+  assertEquals(
+    s.error.message,
+    "I can't reach the receptionist right now. Check your connection, then try again.",
+  );
 });

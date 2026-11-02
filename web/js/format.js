@@ -1,0 +1,53 @@
+// Text for the action cards: titles, durations and detail lines. Every
+// number shown comes from the server's measurements (README: never mocked).
+
+// formatDuration keeps about three significant figures.
+export function formatDuration(ms) {
+  if (ms < 10) return `${Number(ms.toFixed(2))} ms`;
+  if (ms < 1000) return `${Math.round(ms)} ms`;
+  return `${Number((ms / 1000).toFixed(1))} s`;
+}
+
+const KIND = {
+  retrieval: "Retrieval",
+  inference: "Inference",
+  tool: "Tool",
+  judge: "Judge",
+  cache: "Stored answer",
+  embed: "Embedding",
+  rewrite: "Rewrite",
+  rate_limit: "Rate limit",
+};
+
+export function cardTitle(card) {
+  const kind = KIND[card.kind] || card.kind;
+  if (card.kind === "inference") {
+    const provider = card.detail && card.detail.provider;
+    return provider ? `${kind} (${provider})` : kind;
+  }
+  return card.label ? `${kind} · ${card.label}` : kind;
+}
+
+export function cardDetails(card) {
+  const d = card.detail;
+  if (!d) return [];
+  switch (card.kind) {
+    case "retrieval":
+      return [`${d.hits} passages · top score ${Number(d.top_score ?? 0).toFixed(3)}`];
+    case "inference": {
+      const speed = d.tokens_per_s ? ` · ${Math.round(d.tokens_per_s)} tok/s` : "";
+      const cached = d.cached_tokens ? ` · ${d.cached_tokens} cached` : "";
+      return [
+        d.model,
+        `TTFT ${formatDuration(d.ttft_ms)}${speed}`,
+        `${d.tokens_in} in · ${d.tokens_out} out${cached}`,
+      ]
+        .filter(Boolean);
+    }
+    case "tool":
+      if (d.authorized === false) return ["not authorized"];
+      if (d.confirmation === "requested") return ["waiting for your confirmation"];
+      return d.error ? [d.error] : [];
+  }
+  return [];
+}
