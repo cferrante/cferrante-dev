@@ -157,7 +157,7 @@ a script that pins each version and verifies its checksum: the Tailwind v4 stand
 |---|---|---|
 | **4.1** Fetch the pinned tools; `make css` | CSS budget (< 15 KB gzipped) and required-classes checks fail (no CSS yet) | Both pass, locally and in CI **✅ 2026-11-02** (1,894 bytes gzipped; Tailwind v4.3.3, Deno v2.9.7) |
 | **4.2** The page, served by `make dev` with the CSP header; SSE client with the body hash | `deno test`: an event split across network chunks parses once; the body hash matches a known SHA-256; the reducer builds the thought stream and answer. Go: `/` is served with the CSP header | The thought stream renders live against `make dev` (**first click-through**) **✅ 2026-11-02** (built; awaiting your click-through) |
-| **4.3** Action cards with live durations, `data-state` styling, reduced motion; errors with Retry | Every `step_start` creates a card and `step_end` fills its duration; a retryable error offers Retry | Cards light up with real timings |
+| **4.3** Action cards with live durations, `data-state` styling, reduced motion; errors with Retry | Every `step_start` creates a card and `step_end` fills its duration; a retryable error offers Retry | Cards light up with real timings **✅ 2026-11-02** (built; awaiting your click-through) |
 | **4.4** The Confirm card | `confirm_request` creates a card; Confirm sends `{confirm:{action_id}}`; an expired card disables its button; each outcome is shown | An invitee proposes, confirms and sees "Done" |
 | **4.5** Citations and suggestion chips (hand-written answers) | Go: a `suggested_id` streams the stored answer with no model call. Deno: a citation with a `javascript:` URL renders as text | Chips answer instantly; citations link to sources |
 
@@ -293,6 +293,7 @@ Any change from this plan: what changed, why, and which step.
 | 2026-11-02 | 4.x | Phase 4 gains [design §14](design.md#14-frontend) and a Confirm-card step (4.4); citations and chips move to 4.5 | No step built the Confirm button that 3.6's confirmations need; the frontend's safety rules (text-only model output, CSP) and serving needed a contract |
 | 2026-11-02 | 4.2 | JavaScript tests run under Deno, not Node | Node v24 is installed, but you've found keeping Node patched painful. Deno is one pinned binary with no npm packages and deny-by-default permissions, so tests run with no file, network or environment access |
 | 2026-11-02 | 4.5 | Suggested answers are hand-written until the judge exists (Phase 6), served from a stored answers file | The frontend only needs the stored-answer path; there's no real corpus yet; generating with the dev model would be unjudged and rebuilt in Phase 6 anyway |
+| 2026-11-02 | 4.3 | Errors are shown as plain sentences per cause (`messages.js`), with the code kept in the console and `data-code`; an unreachable server is its own case | Your click-through: "Error: Failed to fetch" is the browser's raw text. Visitors get a sentence and, when it helps, Retry; the raw detail stays available for debugging |
 
 ## Code review log
 
@@ -362,6 +363,7 @@ Outcome of each review: finding, decision (fixed / won't fix / deferred), and wh
 | 2026-11-02 | 4.1 | Removing a class from the page didn't fail the required-classes check: Tailwind scanned `web/required-classes.txt` itself, so every listed class was generated from the list, and the check could never fail | Fixed: `@source not` excludes the list and the built output from scanning; the same break now fails `make css-check` |
 | 2026-11-02 | 4.2 | Breaking the reducer so it mutated state passed the immutability test: the test only fed a reasoning chunk, which takes the joining branch, not the mutating one | Fixed: the test applies every event kind and checks the earlier state each time; it catches the break. Seven other JS breaks and a naive path-joining static handler (which leaked a file outside the site on all three traversal paths) were caught |
 | 2026-11-02 | 4.2 | Verified beyond unit tests: the real `client.js` and `state.js`, run under Deno with network access to one local port only, streamed a live qwen3 answer from `make dev` (241 reasoning events joined into one block, 16 tokens, 1 citation, 31 s) | The DOM itself is left to your click-through |
+| 2026-11-02 | 4.3 | Two edits silently failed to apply because `deno fmt` had reformatted the files since I last read them; the tests caught both (the reducer still behaved as before) | Edits now go against the formatted text; all five breaks (raw text for unknown errors, 401, seconds as ms, hidden refusal, matching cards by kind) were caught |
 
 ## Spike findings
 
