@@ -95,3 +95,23 @@ Deno.test("a model that stops without an answer gets its own sentence, retryable
     },
   );
 });
+
+Deno.test("confirmation refusals have plain sentences and never offer Retry", () => {
+  for (
+    const code of [
+      "action_expired",
+      "action_already_done",
+      "action_not_found",
+      "not_authorized",
+      "action_failed",
+    ]
+  ) {
+    const e = friendlyError({ code, message: "technical" }, site);
+    assertEquals(e.retryable, false, code);
+    assertEquals(
+      e.message === "Something went wrong on our side. Please try again.",
+      false,
+      `${code} fell back to generic`,
+    );
+  }
+});

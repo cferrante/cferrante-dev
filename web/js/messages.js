@@ -17,6 +17,11 @@ export const defaultMessages = {
   session_ended: "Your session has ended. Please sign in again.",
   server_error: "Something went wrong on our side. Please try again.",
   empty_answer: "I didn't manage to put an answer together that time. Please try again.",
+  action_expired: "That request expired before it was confirmed. Ask again if you still want it.",
+  action_already_done: "That was already done; nothing was sent twice.",
+  action_not_found: "That request is no longer available. Ask again if you still want it.",
+  not_authorized: "You can no longer do that. Please sign in again.",
+  action_failed: "That didn't go through, and it wasn't retried. Please try again later.",
 };
 
 const retryable = {
@@ -30,6 +35,13 @@ const retryable = {
   session_ended: false,
   server_error: true,
   empty_answer: true,
+  // Confirmations never offer Retry: re-running an action is the visitor's
+  // decision, made by asking again.
+  action_expired: false,
+  action_already_done: false,
+  action_not_found: false,
+  not_authorized: false,
+  action_failed: false,
 };
 
 function wording(key, config) {

@@ -27,6 +27,7 @@ import (
 var MessageKeys = []string{
 	"network", "timeout", "model_unavailable", "retrieval_failed", "rate_limited",
 	"tool_limit", "incomplete", "session_ended", "server_error", "empty_answer",
+	"action_expired", "action_already_done", "action_not_found", "not_authorized", "action_failed",
 }
 
 type siteConfig struct {

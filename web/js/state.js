@@ -12,6 +12,10 @@ export function initialState(config = {}) {
     conversationId: "",
     error: null, // {code, message, retryable}: message is the friendly one
     cards: [], // action cards: [{id, kind, label, state, durationMs, detail}]
+    // The Confirm card: {actionId, tool, summary, expiresAtMs, status, outcome}.
+    // status: pending | confirming | done | expired | failed. It stays across
+    // new questions until handled; a new proposal replaces it.
+    proposal: null,
   };
 }
 
@@ -43,8 +47,38 @@ export function reduce(state, name, data) {
     }
     case "token":
       return { ...state, answer: state.answer + data.text };
-    case "done":
-      return { ...state, status: "done", conversationId: data.conversation_id || state.conversationId };
+    case "done": {
+      const next = { ...state, status: "done", conversationId: data.conversation_id || state.conversationId };
+      if (state.proposal && state.proposal.status === "confirming") {
+        next.proposal = { ...state.proposal, status: "done", outcome: state.answer };
+      }
+      return next;
+    }
+    case "confirm_request":
+      return {
+        ...state,
+        proposal: {
+          actionId: data.action_id,
+          tool: data.tool,
+          summary: data.summary,
+          expiresAtMs: data.received_ms + data.expires_in_s * 1000,
+          status: "pending",
+          outcome: "",
+        },
+      };
+    case "confirm": // the page's own event: the visitor pressed Confirm
+      return {
+        ...state,
+        status: "streaming",
+        question: `You confirmed: ${state.proposal.summary}`,
+        thoughts: [],
+        answer: "",
+        error: null,
+        cards: [],
+        proposal: { ...state.proposal, status: "confirming" },
+      };
+    case "dismiss": // Not now: nothing is sent; the action simply expires
+      return { ...state, proposal: null };
     case "step_start":
       return {
         ...state,
@@ -67,8 +101,15 @@ export function reduce(state, name, data) {
             : c
         ),
       };
-    case "error":
-      return { ...state, status: "error", error: { code: data.code, ...friendlyError(data, state.config) } };
+    case "error": {
+      const error = { code: data.code, ...friendlyError(data, state.config) };
+      const next = { ...state, status: "error", error };
+      if (state.proposal && state.proposal.status === "confirming") {
+        const status = { action_expired: "expired", action_already_done: "done" }[data.code] || "failed";
+        next.proposal = { ...state.proposal, status, outcome: error.message };
+      }
+      return next;
+    }
   }
   return state; // events the page doesn't show yet
 }

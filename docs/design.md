@@ -574,9 +574,13 @@ Plan Phase 4 builds it.
   Pages are served with `Content-Security-Policy: default-src 'self'; script-src 'self';
   style-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'self';
   frame-ancestors 'none'` and `X-Content-Type-Options: nosniff`.
-- **Confirm card:** a `confirm_request` shows its summary, a Confirm button and the time left;
-  Confirm sends `{"confirm":{"action_id":…}}` and the card shows the outcome
-  ([§6](#6-tools-and-authorization)).
+- **Confirm card:** a `confirm_request` shows its summary, a Confirm button, Not now and the time
+  left; Confirm sends `{"confirm":{"action_id":…}}` in the same conversation and the card shows
+  the outcome: Done, Already done, Expired or Not sent ([§6](#6-tools-and-authorization)). The
+  card stays across new questions until handled, and a new proposal replaces it. Not now only
+  hides it: nothing is sent, and the action expires. Confirmation refusals never offer Retry;
+  Retry after a network failure repeats the last request, which is safe because an action runs
+  at most once.
 - **Suggested questions:** chips come from the server's stored answers file (id, question,
   answer, cited chunk ids, access). A `suggested_id` request streams the stored answer with a
   `cache` step and no model call. Answers are hand-written until the judge (Phase 6) can generate
