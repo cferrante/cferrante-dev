@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -15,6 +16,7 @@ import (
 	"github.com/cferrante/cferrante-dev/orchestrator/clock"
 	"github.com/cferrante/cferrante-dev/orchestrator/model"
 	"github.com/cferrante/cferrante-dev/orchestrator/sse"
+	"github.com/cferrante/cferrante-dev/orchestrator/tools"
 )
 
 // TurnDeadline bounds a whole turn (design §3).
@@ -36,7 +38,13 @@ type Retriever interface {
 type TurnRequest struct {
 	ConversationID string // "" or unknown: a new conversation is started
 	Message        string
+	// ConfirmActionID, when set, confirms a proposed action instead of
+	// asking a question (design §6).
+	ConfirmActionID string
 }
+
+// MaxToolRounds bounds how many times one turn may call tools (design §3).
+const MaxToolRounds = 3
 
 // Agent runs turns. Fields are set once and read concurrently.
 type Agent struct {
@@ -44,8 +52,11 @@ type Agent struct {
 	Retriever Retriever
 	Store     ConversationStore
 	Clock     clock.Clock
-	TopK      int           // passages per turn; default 5
-	NewID     func() string // conversation ids; default 128 random bits
+	TopK      int                  // passages per turn; default 5
+	Deadline  time.Duration        // whole-turn limit; default TurnDeadline
+	Tools     tools.Registry       // nil: no tools offered
+	Pending   tools.PendingActions // required when Tools has side effects
+	NewID     func() string        // conversation ids; default 128 random bits
 }
 
 var errDeadline = errors.New("agent: turn deadline exceeded")
@@ -60,7 +71,7 @@ func (a *Agent) Turn(ctx context.Context, caller auth.Caller, req TurnRequest, w
 	defer close(stop)
 	go func() {
 		select {
-		case <-a.Clock.After(TurnDeadline):
+		case <-a.Clock.After(a.deadline()):
 			cancel(errDeadline)
 		case <-stop:
 		}
@@ -75,6 +86,9 @@ func (a *Agent) Turn(ctx context.Context, caller auth.Caller, req TurnRequest, w
 	}
 	if !ok {
 		convID, history = a.newID(), nil
+	}
+	if req.ConfirmActionID != "" {
+		return a.confirm(ctx, caller, req.ConfirmActionID, convID, w)
 	}
 
 	if err := w.StepStart("retrieval", "retrieval", "Hybrid search"); err != nil {
@@ -96,41 +110,75 @@ func (a *Agent) Turn(ctx context.Context, caller auth.Caller, req TurnRequest, w
 		return err
 	}
 
-	if err := w.StepStart("inference", "inference", "Writing the answer"); err != nil {
-		return err
+	// The model may call tools; their results go back to it, for at most
+	// MaxToolRounds rounds (design §3). Layer 1 of authorization: the model
+	// is only shown the tools this caller may use (design §6).
+	mreq := prompt(chunks, history, req.Message)
+	mreq.Tools = a.Tools.For(caller)
+	if len(mreq.Tools) > 0 {
+		mreq.System += toolGuidance
 	}
 	cites := newCiter(len(chunks))
 	var answer strings.Builder
-	started := a.Clock.Now()
-	res, err := a.Model.Stream(ctx, prompt(chunks, history, req.Message), func(e model.Event) error {
-		switch e.Kind {
-		case model.Reasoning:
-			return w.Thought(e.Text, "model")
-		case model.Text:
-			answer.WriteString(e.Text)
-			if err := w.Token(e.Text); err != nil {
-				return err
-			}
-			for _, n := range cites.feed(e.Text) {
-				c := chunks[n-1]
-				if err := w.Citation(sse.Citation{N: n, ChunkID: c.ID, Title: c.Title, URL: c.URL}); err != nil {
+	toolSteps := 0
+	for round := 0; ; round++ {
+		stepID := "inference"
+		if round > 0 {
+			stepID = fmt.Sprintf("inference-%d", round+1)
+		}
+		if err := w.StepStart(stepID, "inference", "Writing the answer"); err != nil {
+			return err
+		}
+		var calls []model.ToolCall
+		var text strings.Builder
+		started := a.Clock.Now()
+		res, err := a.Model.Stream(ctx, mreq, func(e model.Event) error {
+			switch e.Kind {
+			case model.Reasoning:
+				return w.Thought(e.Text, "model")
+			case model.Text:
+				text.WriteString(e.Text)
+				answer.WriteString(e.Text)
+				if err := w.Token(e.Text); err != nil {
 					return err
 				}
+				for _, n := range cites.feed(e.Text) {
+					c := chunks[n-1]
+					if err := w.Citation(sse.Citation{N: n, ChunkID: c.ID, Title: c.Title, URL: c.URL}); err != nil {
+						return err
+					}
+				}
+			case model.ToolCallEvent:
+				calls = append(calls, *e.ToolCall)
 			}
+			return nil
+		})
+		if err != nil {
+			_ = w.StepEnd(stepID, "error", map[string]any{"error": err.Error()})
+			return a.fail(ctx, w, "model_unavailable", "the model couldn't answer right now")
 		}
-		// Tool calls are handled from step 3.6; no tools are offered yet.
-		return nil
-	})
-	if err != nil {
-		_ = w.StepEnd("inference", "error", map[string]any{"error": err.Error()})
-		return a.fail(ctx, w, "model_unavailable", "the model couldn't answer right now")
-	}
-	status := "ok"
-	if res.Fallback {
-		status = "fallback"
-	}
-	if err := w.StepEnd("inference", status, inferenceDetail(res, a.Clock.Now().Sub(started))); err != nil {
-		return err
+		status := "ok"
+		if res.Fallback {
+			status = "fallback"
+		}
+		if err := w.StepEnd(stepID, status, inferenceDetail(res, a.Clock.Now().Sub(started))); err != nil {
+			return err
+		}
+		if len(calls) == 0 {
+			break
+		}
+		if round == MaxToolRounds {
+			return w.Error("tool_limit", "the answer needed too many tool calls", true)
+		}
+		mreq.Messages = append(mreq.Messages, model.Message{Role: model.Assistant, Content: text.String(), ToolCalls: calls})
+		for _, c := range calls {
+			toolSteps++
+			result, err := a.runTool(ctx, caller, c, fmt.Sprintf("tool-%d", toolSteps), w)
+			if err != nil {
+				return err
+			}
+			mreq.Messages = append(mreq.Messages, model.Message{Role: model.ToolRole, ToolCallID: c.ID, Content: result})
+		}
 	}
 
 	// History keeps the bare question, not the passages, so later turns
@@ -152,6 +200,13 @@ func (a *Agent) fail(ctx context.Context, w *sse.Writer, code, message string) e
 		return w.Error("cancelled", "the request was cancelled", false)
 	}
 	return w.Error(code, message, true)
+}
+
+func (a *Agent) deadline() time.Duration {
+	if a.Deadline > 0 {
+		return a.Deadline
+	}
+	return TurnDeadline
 }
 
 func (a *Agent) topK() int {
@@ -209,3 +264,94 @@ func inferenceDetail(r model.Result, elapsed time.Duration) map[string]any {
 	}
 	return d
 }
+
+// runTool handles one tool call from the model as a tool step and returns
+// the result to send back to the model. Layer 2 of authorization: whatever
+// the model was shown, the call is checked again here, so a forged or
+// hallucinated call runs nothing. A side-effecting call never runs here: it
+// becomes a pending action the visitor must confirm (design §6). The error
+// is non-nil only when the stream itself failed.
+func (a *Agent) runTool(ctx context.Context, caller auth.Caller, c model.ToolCall, stepID string, w *sse.Writer) (string, error) {
+	if err := w.StepStart(stepID, "tool", c.Name); err != nil {
+		return "", err
+	}
+	end := func(status string, detail map[string]any, result any) (string, error) {
+		detail["tool"] = c.Name
+		raw, _ := json.Marshal(result)
+		return string(raw), w.StepEnd(stepID, status, detail)
+	}
+	def, ok := a.Tools.Lookup(c.Name)
+	if !ok || !tools.Allowed(def, caller) {
+		return end("error", map[string]any{"authorized": false}, map[string]string{"error": "not authorized to use " + c.Name})
+	}
+	summary, err := def.Summary(c.Arguments)
+	if err != nil {
+		return end("error", map[string]any{"authorized": true, "error": err.Error()}, map[string]string{"error": "invalid arguments: " + err.Error()})
+	}
+	if !def.SideEffect {
+		result, err := def.Run(ctx, caller, c.Arguments)
+		if err != nil {
+			return end("error", map[string]any{"authorized": true, "error": err.Error()}, map[string]string{"error": err.Error()})
+		}
+		return end("ok", map[string]any{"authorized": true}, result)
+	}
+
+	action := tools.PendingAction{ID: a.newActionID(), CallerID: caller.ID, Tool: c.Name, Summary: summary,
+		Args: c.Arguments, Expires: a.Clock.Now().Add(tools.PendingTTL)}
+	if err := a.Pending.Propose(ctx, action); err != nil {
+		return end("error", map[string]any{"authorized": true, "error": err.Error()}, map[string]string{"error": "couldn't prepare the action"})
+	}
+	if err := w.ConfirmRequest(action.ID, c.Name, summary, tools.PendingTTL); err != nil {
+		return "", err
+	}
+	return end("ok", map[string]any{"authorized": true, "confirmation": "requested"},
+		map[string]string{"status": "awaiting_confirmation", "summary": summary,
+			"note": "Nothing has been sent yet. Ask the visitor to press Confirm."})
+}
+
+// confirm runs a pending action the visitor confirmed: no retrieval and no
+// model call. The claim is the single conditional update that makes the
+// action run at most once; the caller is checked again first.
+func (a *Agent) confirm(ctx context.Context, caller auth.Caller, actionID, convID string, w *sse.Writer) error {
+	if err := w.StepStart("tool-1", "tool", "Confirmed action"); err != nil {
+		return err
+	}
+	action, err := a.Pending.Claim(ctx, actionID, caller.ID, a.Clock.Now())
+	if err != nil {
+		code := "internal"
+		switch {
+		case errors.Is(err, tools.ErrNoAction):
+			code = "action_not_found"
+		case errors.Is(err, tools.ErrExpired):
+			code = "action_expired"
+		case errors.Is(err, tools.ErrAlreadyDone):
+			code = "action_already_done"
+		}
+		_ = w.StepEnd("tool-1", "error", map[string]any{"error": err.Error()})
+		return w.Error(code, "that action can't be confirmed", false)
+	}
+	def, ok := a.Tools.Lookup(action.Tool)
+	if !ok || !tools.Allowed(def, caller) {
+		_ = w.StepEnd("tool-1", "error", map[string]any{"tool": action.Tool, "authorized": false})
+		return w.Error("not_authorized", "you can no longer use "+action.Tool, false)
+	}
+	if _, err := def.Run(ctx, caller, action.Args); err != nil {
+		_ = w.StepEnd("tool-1", "error", map[string]any{"tool": action.Tool, "authorized": true, "error": err.Error()})
+		return w.Error("action_failed", "the action failed and was not retried", false)
+	}
+	if err := w.StepEnd("tool-1", "ok", map[string]any{"tool": action.Tool, "authorized": true}); err != nil {
+		return err
+	}
+	done := "Done: " + action.Summary + "."
+	if err := w.Token(done); err != nil {
+		return err
+	}
+	if err := a.Store.Append(ctx, convID, caller.ID,
+		model.Message{Role: model.User, Content: "(Confirmed: " + action.Summary + ")"},
+		model.Message{Role: model.Assistant, Content: done}); err != nil {
+		return w.Error("internal", "couldn't save the conversation", true)
+	}
+	return w.Done(convID)
+}
+
+func (a *Agent) newActionID() string { return "a_" + strings.TrimPrefix(a.newID(), "c_") }

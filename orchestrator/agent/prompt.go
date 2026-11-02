@@ -14,6 +14,14 @@ in the user's message. After each claim, cite the passage it comes from as [n],
 for example [1] or [1][3]. If the passages don't answer the question, say so
 plainly instead of guessing. Keep answers short and friendly.`
 
+// toolGuidance is appended to the system prompt when tools are offered.
+const toolGuidance = `
+
+You may also use the tools offered to help the visitor, for example to share
+contact options or to send the owner a message on the visitor's behalf.
+Actions that send something only happen after the visitor presses Confirm:
+never say a message was sent or a meeting requested until the visitor confirms.`
+
 // prompt builds the model request: system prompt, earlier turns, then the
 // question with the retrieved passages numbered 1..k so [n] refers to chunks[n-1].
 func prompt(chunks []Chunk, history []model.Message, question string) model.Request {
