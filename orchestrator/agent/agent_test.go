@@ -342,3 +342,58 @@ func TestSystemPromptUsesTheAssistantName(t *testing.T) {
 		t.Errorf("configured system prompt:\n%s", reqs[1].System)
 	}
 }
+
+// Found in your click-through: qwen3 reasoned slowly and stopped without any
+// answer text; the turn still ended with done, so the page showed nothing.
+func TestAModelThatOnlyReasonsEndsWithAnError(t *testing.T) {
+	m := &fake.Model{Name: "ollama", Events: []model.Event{{Kind: model.Reasoning, Text: "Let me think about this..."}},
+		Result: model.Result{StopReason: "stop", TokensOut: 220}}
+	h := newHarness(m, &fakeRetriever{chunks: twoChunks})
+	evs := h.turn(t, context.Background(), auth.Caller{}, TurnRequest{Message: "How does Alpha search?"})
+	last := evs[len(evs)-1]
+	if last.name != "error" || last.data["code"] != "empty_answer" || last.data["retryable"] != true {
+		t.Fatalf("turn ended with %s %v; want a retryable empty_answer error", last.name, last.data)
+	}
+	// Nothing is saved as an answer the visitor never saw.
+	if _, ok, _ := h.agent.Store.Load(context.Background(), "c_1", ""); ok {
+		t.Error("an empty turn was saved to the conversation")
+	}
+}
+
+func TestInferenceStepReportsWhyTheModelStopped(t *testing.T) {
+	m := &fake.Model{Name: "ollama", Events: answer("ok"), Result: model.Result{StopReason: "length"}}
+	h := newHarness(m, &fakeRetriever{chunks: twoChunks})
+	evs := h.turn(t, context.Background(), auth.Caller{}, TurnRequest{Message: "q"})
+	for _, e := range evs {
+		if e.name == "step_end" && e.data["step_id"] == "inference" {
+			if got := e.data["detail"].(map[string]any)["stop_reason"]; got != "length" {
+				t.Errorf("stop_reason = %v", got)
+			}
+			return
+		}
+	}
+	t.Fatal("no inference step")
+}
+
+func TestEachTurnIsLoggedOnOneLine(t *testing.T) {
+	var log strings.Builder
+	m := &fake.Model{Name: "ollama", Events: answer("Alpha is Go [1]."),
+		Result: model.Result{Model: "qwen3:4b", TokensIn: 410, TokensOut: 501, StopReason: "stop"}}
+	h := newHarness(m, &fakeRetriever{chunks: twoChunks})
+	h.agent.Log = &log
+	h.turn(t, context.Background(), auth.Caller{}, TurnRequest{Message: "q"})
+	line := log.String()
+	for _, want := range []string{"turn ", "conversation=c_1", "outcome=done", "hits=2", "model=qwen3:4b",
+		"tokens_in=410", "tokens_out=501", "stop=stop", "answer_chars=16"} {
+		if !strings.Contains(line, want) {
+			t.Errorf("log line lacks %q:\n%s", want, line)
+		}
+	}
+	if strings.Count(line, "\n") != 1 {
+		t.Errorf("want exactly one line per turn:\n%s", line)
+	}
+	// The question itself is never logged: it's the visitor's text.
+	if strings.Contains(line, "q\n") || strings.Contains(line, "question=") {
+		t.Errorf("log line contains the question:\n%s", line)
+	}
+}

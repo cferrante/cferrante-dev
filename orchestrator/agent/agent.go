@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 
@@ -54,6 +55,8 @@ type Agent struct {
 	Clock     clock.Clock
 	TopK      int           // passages per turn; default 5
 	Deadline  time.Duration // whole-turn limit; default TurnDeadline
+	// Log, when set, gets one summary line per turn (no visitor text).
+	Log io.Writer
 	// AssistantName is what the model is told it is; default "Context Concierge".
 	AssistantName string
 	Tools         tools.Registry       // nil: no tools offered
@@ -62,6 +65,23 @@ type Agent struct {
 }
 
 var errDeadline = errors.New("agent: turn deadline exceeded")
+
+// turnLog is one turn's summary for Agent.Log: timings, tokens and how it
+// ended, never the visitor's text.
+type turnLog struct {
+	conv, outcome, model, stop                     string
+	hits, rounds, tokensIn, tokensOut, answerChars int
+	retrieval, inference                           time.Duration
+}
+
+func (a *Agent) writeLog(l *turnLog) {
+	if a.Log == nil {
+		return
+	}
+	fmt.Fprintf(a.Log, "turn conversation=%s outcome=%s hits=%d retrieval_ms=%d inference_ms=%d rounds=%d model=%s tokens_in=%d tokens_out=%d stop=%s answer_chars=%d\n",
+		l.conv, l.outcome, l.hits, l.retrieval.Milliseconds(), l.inference.Milliseconds(), l.rounds,
+		l.model, l.tokensIn, l.tokensOut, l.stop, l.answerChars)
+}
 
 // Turn runs one turn, writing every event to w. It returns when the turn is
 // over; the caller still defers w.Close, which keeps the stream contract if
@@ -92,11 +112,15 @@ func (a *Agent) Turn(ctx context.Context, caller auth.Caller, req TurnRequest, w
 	if req.ConfirmActionID != "" {
 		return a.confirm(ctx, caller, req.ConfirmActionID, convID, w)
 	}
+	tl := &turnLog{conv: convID, outcome: "error"}
+	defer a.writeLog(tl)
 
 	if err := w.StepStart("retrieval", "retrieval", "Hybrid search"); err != nil {
 		return err
 	}
+	retrievalStart := a.Clock.Now()
 	chunks, err := a.Retriever.Retrieve(ctx, req.Message, caller.Mask(), a.topK())
+	tl.retrieval, tl.hits = a.Clock.Now().Sub(retrievalStart), len(chunks)
 	if err != nil {
 		_ = w.StepEnd("retrieval", "error", map[string]any{"error": err.Error()})
 		return a.fail(ctx, w, "retrieval_failed", "couldn't search the portfolio")
@@ -164,6 +188,10 @@ func (a *Agent) Turn(ctx context.Context, caller auth.Caller, req TurnRequest, w
 		if res.Fallback {
 			status = "fallback"
 		}
+		tl.rounds++
+		tl.inference += a.Clock.Now().Sub(started)
+		tl.model, tl.stop = res.Model, res.StopReason
+		tl.tokensIn, tl.tokensOut = tl.tokensIn+res.TokensIn, tl.tokensOut+res.TokensOut
 		if err := w.StepEnd(stepID, status, inferenceDetail(res, a.Clock.Now().Sub(started))); err != nil {
 			return err
 		}
@@ -171,6 +199,7 @@ func (a *Agent) Turn(ctx context.Context, caller auth.Caller, req TurnRequest, w
 			break
 		}
 		if round == MaxToolRounds {
+			tl.outcome = "tool_limit"
 			return w.Error("tool_limit", "the answer needed too many tool calls", true)
 		}
 		mreq.Messages = append(mreq.Messages, model.Message{Role: model.Assistant, Content: text.String(), ToolCalls: calls})
@@ -183,6 +212,15 @@ func (a *Agent) Turn(ctx context.Context, caller auth.Caller, req TurnRequest, w
 			mreq.Messages = append(mreq.Messages, model.Message{Role: model.ToolRole, ToolCallID: c.ID, Content: result})
 		}
 	}
+
+	// A model can stop without writing any answer (seen with qwen3 on a busy
+	// CPU: it reasoned, then stopped). Say so rather than end silently.
+	tl.answerChars = len(answer.String())
+	if strings.TrimSpace(answer.String()) == "" {
+		tl.outcome = "empty_answer"
+		return w.Error("empty_answer", "the model finished without an answer", true)
+	}
+	tl.outcome = "done"
 
 	// History keeps the bare question, not the passages, so later turns
 	// retrieve afresh instead of carrying stale context.
@@ -258,6 +296,7 @@ func inferenceDetail(r model.Result, elapsed time.Duration) map[string]any {
 	d := map[string]any{
 		"provider": r.Provider, "model": r.Model, "ttft_ms": r.TTFT.Milliseconds(),
 		"tokens_in": r.TokensIn, "tokens_out": r.TokensOut, "cached_tokens": r.CachedTokens,
+		"stop_reason": r.StopReason,
 	}
 	if gen := (elapsed - r.TTFT).Seconds(); gen > 0 && r.TokensOut > 0 {
 		d["tokens_per_s"] = float64(r.TokensOut) / gen
