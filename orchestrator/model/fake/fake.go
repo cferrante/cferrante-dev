@@ -10,10 +10,13 @@ import (
 
 // Model replays a script. Safe for concurrent use.
 type Model struct {
-	Name      string
-	Events    []model.Event // sent in order
-	ErrBefore error         // returned before any event
-	ErrAfter  error         // returned after all events
+	Name   string
+	Events []model.Event // sent in order
+	// Turns, when set, scripts successive calls: call i sends Turns[i] (the
+	// last entry repeats), overriding Events.
+	Turns     [][]model.Event
+	ErrBefore error // returned before any event
+	ErrAfter  error // returned after all events
 	// Block waits for the context to end before doing anything else. With
 	// SendAfterCancel it then still tries to send Events[0], like a provider
 	// whose first token was already in flight when it was cancelled.
@@ -42,7 +45,14 @@ func (m *Model) Stream(ctx context.Context, req model.Request, onEvent func(mode
 	if m.ErrBefore != nil {
 		return model.Result{}, m.ErrBefore
 	}
-	for _, e := range m.Events {
+	events := m.Events
+	if len(m.Turns) > 0 {
+		m.mu.Lock()
+		n := len(m.requests) - 1
+		m.mu.Unlock()
+		events = m.Turns[min(n, len(m.Turns)-1)]
+	}
+	for _, e := range events {
 		if err := ctx.Err(); err != nil {
 			return model.Result{}, err
 		}
