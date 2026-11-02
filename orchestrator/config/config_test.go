@@ -4,6 +4,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 )
 
 func env(m map[string]string) Getenv { return func(k string) string { return m[k] } }
@@ -88,5 +89,22 @@ func TestMalformedDotEnvNamesTheLine(t *testing.T) {
 	os.WriteFile(path, []byte("A=1\nthis is not a setting\n"), 0o600)
 	if _, err := WithDotEnv(path, env(nil)); err == nil || !strings.Contains(err.Error(), "line 2") {
 		t.Errorf("err = %v, want it to name line 2", err)
+	}
+}
+
+func TestDuration(t *testing.T) {
+	e := New(env(map[string]string{"D": "5m", "BAD": "soon"}))
+	if got := e.Duration("D", time.Second); got != 5*time.Minute {
+		t.Errorf("Duration = %v", got)
+	}
+	if got := e.Duration("UNSET", time.Second); got != time.Second {
+		t.Errorf("unset Duration = %v", got)
+	}
+	if e.Err() != nil {
+		t.Fatalf("Err = %v", e.Err())
+	}
+	e.Duration("BAD", time.Second)
+	if err := e.Err(); err == nil || !strings.Contains(err.Error(), "BAD") {
+		t.Errorf("Err = %v, want an error naming BAD", err)
 	}
 }
