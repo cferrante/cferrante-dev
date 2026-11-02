@@ -85,3 +85,13 @@ Deno.test("works with no config at all", () => {
     "I can't reach the assistant right now. Check your connection, then try again.",
   );
 });
+
+Deno.test("a model that stops without an answer gets its own sentence, retryable", () => {
+  assertEquals(
+    friendlyError({ code: "empty_answer", message: "the model finished without an answer" }, site),
+    {
+      message: "I didn't manage to put an answer together that time. Please try again.",
+      retryable: true,
+    },
+  );
+});

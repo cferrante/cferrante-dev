@@ -16,6 +16,7 @@ export const defaultMessages = {
   incomplete: "The answer was cut off. Please try again.",
   session_ended: "Your session has ended. Please sign in again.",
   server_error: "Something went wrong on our side. Please try again.",
+  empty_answer: "I didn't manage to put an answer together that time. Please try again.",
 };
 
 const retryable = {
@@ -28,6 +29,7 @@ const retryable = {
   incomplete: true,
   session_ended: false,
   server_error: true,
+  empty_answer: true,
 };
 
 function wording(key, config) {

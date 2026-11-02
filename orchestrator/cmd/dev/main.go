@@ -128,7 +128,7 @@ func setup(ctx context.Context, c config, m model.Model, logw io.Writer) (http.H
 	outbox := &tools.MemoryOutbox{Log: logw}
 	a := &agent.Agent{Model: m, Retriever: r, Store: agent.NewMemoryStore(), Clock: clock.Real{},
 		Tools:   tools.New(tools.Static{ContactOptions: c.contact, Availability: c.availability}, outbox),
-		Pending: tools.NewMemoryPending(), Deadline: c.deadline, AssistantName: c.assistant}
+		Pending: tools.NewMemoryPending(), Deadline: c.deadline, AssistantName: c.assistant, Log: logw}
 	mux := http.NewServeMux()
 	mux.Handle("/chat", &server.Chat{Agent: a, Auth: auth.Fixed(caller), Clock: clock.Real{}})
 	mux.Handle("/", server.Static(c.webDir))

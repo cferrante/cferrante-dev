@@ -26,7 +26,7 @@ import (
 // that's behaviour, not wording.
 var MessageKeys = []string{
 	"network", "timeout", "model_unavailable", "retrieval_failed", "rate_limited",
-	"tool_limit", "incomplete", "session_ended", "server_error",
+	"tool_limit", "incomplete", "session_ended", "server_error", "empty_answer",
 }
 
 type siteConfig struct {
