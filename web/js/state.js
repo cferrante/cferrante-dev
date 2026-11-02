@@ -1,5 +1,6 @@
 // The UI state and the pure reducer that applies one stream event to it
 // (design §14). The page renders from this state; nothing here touches the DOM.
+import { friendlyError } from "./messages.js";
 
 export function initialState() {
   return {
@@ -8,7 +9,8 @@ export function initialState() {
     thoughts: [], // [{source: "agent"|"model", text}]
     answer: "",
     conversationId: "",
-    error: null, // {code, message, retryable}
+    error: null, // {code, message, retryable}: message is the friendly one
+    cards: [], // action cards: [{id, kind, label, state, durationMs, detail}]
   };
 }
 
@@ -17,7 +19,15 @@ export function initialState() {
 export function reduce(state, name, data) {
   switch (name) {
     case "ask":
-      return { ...state, status: "streaming", question: data.message, thoughts: [], answer: "", error: null };
+      return {
+        ...state,
+        status: "streaming",
+        question: data.message,
+        thoughts: [],
+        answer: "",
+        error: null,
+        cards: [],
+      };
     case "thought": {
       const last = state.thoughts[state.thoughts.length - 1];
       // Reasoning streams a few characters at a time: join it into one
@@ -34,12 +44,30 @@ export function reduce(state, name, data) {
       return { ...state, answer: state.answer + data.text };
     case "done":
       return { ...state, status: "done", conversationId: data.conversation_id || state.conversationId };
-    case "error":
+    case "step_start":
       return {
         ...state,
-        status: "error",
-        error: { code: data.code, message: data.message, retryable: !!data.retryable },
+        cards: [...state.cards, {
+          id: data.step_id,
+          kind: data.kind,
+          label: data.label,
+          state: "active",
+          durationMs: null,
+          detail: null,
+        }],
       };
+    case "step_end":
+      // state is ok | error | fallback | skipped, used as data-state for styling.
+      return {
+        ...state,
+        cards: state.cards.map((c) =>
+          c.id === data.step_id
+            ? { ...c, state: data.status, durationMs: data.duration_ms, detail: data.detail || null }
+            : c
+        ),
+      };
+    case "error":
+      return { ...state, status: "error", error: { code: data.code, ...friendlyError(data) } };
   }
   return state; // events the page doesn't show yet
 }

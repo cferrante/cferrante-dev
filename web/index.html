@@ -20,7 +20,13 @@
       <div class="space-y-2 border-t border-term-line px-4 py-3">
         <p id="asked" class="text-term-dim"></p>
         <p id="answer" aria-live="polite" class="whitespace-pre-wrap leading-relaxed"></p>
-        <p id="status" role="status" class="text-term-dim data-[state=error]:text-term-error"></p>
+        <div class="flex items-center gap-3">
+          <p id="status" role="status" class="text-term-dim data-[state=error]:text-term-error"></p>
+          <button id="retry" type="button" hidden
+                  class="rounded border border-term-line px-2 py-1 text-term-fg hover:bg-term-panel focus-visible:outline-2 focus-visible:outline-term-accent">
+            Retry
+          </button>
+        </div>
       </div>
 
       <form id="ask" class="flex gap-2 border-t border-term-line px-4 py-3">
@@ -35,9 +41,24 @@
       </form>
     </section>
 
-    <section aria-label="Action cards" class="bg-term-panel p-4">
-      <p class="text-term-dim">Action cards arrive in plan step 4.3.</p>
+    <section aria-label="Action cards" class="overflow-y-auto bg-term-panel p-4">
+      <h2 class="mb-3 text-term-dim">Action cards <span class="text-xs">· measured by the server</span></h2>
+      <ol id="cards" class="space-y-2"></ol>
+      <p id="no-cards" class="text-term-dim">Each backend step appears here as it runs.</p>
     </section>
   </main>
+
+  <!-- One template for every action card (README conventions). data-state
+       (active | ok | error | fallback | skipped) drives all the styling. -->
+  <template id="card-template">
+    <li class="group rounded border border-term-line bg-term-bg px-3 py-2 data-[state=active]:border-term-accent data-[state=error]:border-term-error data-[state=fallback]:border-term-warn">
+      <div class="flex items-center gap-2">
+        <span aria-hidden="true" class="size-2 shrink-0 rounded-full bg-term-dim group-data-[state=active]:animate-pulse group-data-[state=active]:bg-term-accent group-data-[state=ok]:bg-term-accent group-data-[state=error]:bg-term-error group-data-[state=fallback]:bg-term-warn motion-reduce:animate-none"></span>
+        <span data-role="title" class="flex-1 truncate"></span>
+        <span data-role="duration" class="tabular-nums text-term-dim"></span>
+      </div>
+      <ul data-role="details" class="mt-1 space-y-0.5 pl-4 text-xs text-term-dim"></ul>
+    </li>
+  </template>
 </body>
 </html>
