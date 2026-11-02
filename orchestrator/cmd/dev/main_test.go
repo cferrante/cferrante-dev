@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -80,6 +81,7 @@ var allEnv = map[string]string{
 	"OLLAMA_BASE_URL": "http://gpu-box:11434", "EMBEDDER": "hash", "EMBED_MODEL": "mxbai-embed-large",
 	"EMBED_DIM": "1024", "CHAT_MODEL": "llama3.1", "REASONING_EFFORT": "medium", "DEV_INVITEE": "true",
 	"CONTACT_OPTIONS": "Use the form.", "AVAILABILITY": "Tue–Thu", "TURN_DEADLINE": "90s",
+	"WEB_DIR": "/site",
 }
 
 func TestEnvironmentSetsEveryOption(t *testing.T) {
@@ -89,7 +91,7 @@ func TestEnvironmentSetsEveryOption(t *testing.T) {
 	}
 	want := config{addr: "127.0.0.1:9999", corpusDir: "/c", index: "/i.idx", ollamaURL: "http://gpu-box:11434",
 		embedder: "hash", embedModel: "mxbai-embed-large", embedDim: 1024, model: "llama3.1", effort: "medium", invitee: true,
-		contact: "Use the form.", availability: "Tue–Thu", deadline: 90 * time.Second}
+		contact: "Use the form.", availability: "Tue–Thu", deadline: 90 * time.Second, webDir: "/site"}
 	if c != want {
 		t.Errorf("config\n got %+v\nwant %+v", c, want)
 	}
@@ -200,5 +202,30 @@ func TestEffortNoneOmitsReasoningEffort(t *testing.T) {
 	c, err := parse(nil, envOf(map[string]string{"REASONING_EFFORT": "none"}))
 	if err != nil || c.effort != "" {
 		t.Errorf("effort = %q, err %v; want empty", c.effort, err)
+	}
+}
+
+func TestDevServesThePageWithItsCSP(t *testing.T) {
+	web := t.TempDir()
+	os.WriteFile(filepath.Join(web, "index.html"), []byte("<title>receptionist</title>"), 0o644)
+	c, _ := parse([]string{"-embedder", "hash", "-corpus", "../../corpus/testdata/corpus",
+		"-index", filepath.Join(t.TempDir(), "dev.idx")}, envOf(map[string]string{"WEB_DIR": web}))
+	h, cleanup, err := setup(context.Background(), c, &fake.Model{}, &bytes.Buffer{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+	resp, err := http.Get(srv.URL + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var b bytes.Buffer
+	b.ReadFrom(resp.Body)
+	if resp.StatusCode != 200 || !strings.Contains(b.String(), "receptionist") ||
+		!strings.Contains(resp.Header.Get("Content-Security-Policy"), "script-src 'self'") {
+		t.Errorf("GET / = %d, CSP %q, body %q", resp.StatusCode, resp.Header.Get("Content-Security-Policy"), b.String())
 	}
 }

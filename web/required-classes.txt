@@ -6,3 +6,8 @@ font-mono
 grid
 md:grid-cols-2
 md:border-r
+whitespace-pre-wrap
+text-term-accent
+text-term-dim
+data-[state=error]:text-term-error
+sr-only

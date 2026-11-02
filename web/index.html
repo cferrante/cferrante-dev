@@ -5,12 +5,38 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>cferrante.dev receptionist</title>
   <link rel="stylesheet" href="/dist/app.css">
+  <script type="module" src="/js/app.js"></script>
 </head>
 <body class="min-h-screen bg-term-bg font-mono text-sm text-term-fg">
-  <main class="grid min-h-screen grid-cols-1 md:grid-cols-2">
-    <section aria-label="Thought stream" class="flex flex-col border-term-line md:border-r">
+  <main class="grid min-h-screen grid-cols-1 md:h-screen md:grid-cols-2">
+    <section aria-label="Thought stream" class="flex min-h-0 flex-col border-term-line md:border-r">
+      <header class="border-b border-term-line px-4 py-3">
+        <h1 class="font-bold text-term-accent">cferrante.dev <span class="text-term-dim">receptionist</span></h1>
+      </header>
+
+      <div id="thoughts" role="log" aria-label="Reasoning and agent steps"
+           class="min-h-48 flex-1 space-y-2 overflow-y-auto px-4 py-3"></div>
+
+      <div class="space-y-2 border-t border-term-line px-4 py-3">
+        <p id="asked" class="text-term-dim"></p>
+        <p id="answer" aria-live="polite" class="whitespace-pre-wrap leading-relaxed"></p>
+        <p id="status" role="status" class="text-term-dim data-[state=error]:text-term-error"></p>
+      </div>
+
+      <form id="ask" class="flex gap-2 border-t border-term-line px-4 py-3">
+        <label for="question" class="sr-only">Your question</label>
+        <input id="question" name="question" autocomplete="off" maxlength="2000"
+               placeholder="Ask about my work…"
+               class="flex-1 rounded border border-term-line bg-term-panel px-3 py-2 text-term-fg placeholder:text-term-dim focus-visible:outline-2 focus-visible:outline-term-accent">
+        <button id="send" type="submit"
+                class="rounded border border-term-accent px-3 py-2 text-term-accent hover:bg-term-panel focus-visible:outline-2 focus-visible:outline-term-accent disabled:opacity-50">
+          Ask
+        </button>
+      </form>
     </section>
+
     <section aria-label="Action cards" class="bg-term-panel p-4">
+      <p class="text-term-dim">Action cards arrive in plan step 4.3.</p>
     </section>
   </main>
 </body>
