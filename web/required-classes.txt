@@ -19,3 +19,7 @@ group-data-[state=ok]:bg-term-accent
 group-data-[state=error]:bg-term-error
 group-data-[state=fallback]:bg-term-warn
 motion-reduce:animate-none
+data-[state=streaming]:animate-pulse
+data-[status=done]:border-term-accent
+data-[status=expired]:border-term-line
+data-[status=failed]:border-term-error

@@ -5,6 +5,7 @@
 // Model output is only ever set with textContent, never as HTML, so text a
 // prompt injection makes the model write can't become markup or script.
 import { postChat } from "./client.js";
+import { confirmBody, secondsLeft } from "./confirm.js";
 import { cardDetails, cardTitle, formatDuration } from "./format.js";
 import { initialState, reduce } from "./state.js";
 // Built by `make site` (orchestrator/cmd/siteconfig) from SITE_NAME,
@@ -24,6 +25,21 @@ const els = {
   cards: $("cards"),
   noCards: $("no-cards"),
   cardTemplate: $("card-template"),
+  proposal: $("proposal"),
+  proposalTitle: $("proposal-title"),
+  proposalSummary: $("proposal-summary"),
+  proposalOutcome: $("proposal-outcome"),
+  proposalTime: $("proposal-time"),
+  confirm: $("confirm"),
+  dismiss: $("dismiss"),
+};
+
+const proposalTitle = {
+  pending: "Please confirm",
+  confirming: "Sending…",
+  done: "Done",
+  expired: "Expired",
+  failed: "Not sent",
 };
 
 // When each active card started, by this page's clock, for the live elapsed
@@ -71,6 +87,7 @@ function render() {
   els.status.dataset.code = state.error ? state.error.code : "";
   els.retry.hidden = !(state.status === "error" && state.error.retryable && state.question);
   renderCards();
+  renderProposal();
   els.thoughts.scrollTop = els.thoughts.scrollHeight;
 }
 
@@ -106,10 +123,31 @@ function renderCards() {
   els.noCards.hidden = state.cards.length > 0;
 }
 
+function renderProposal() {
+  const p = state.proposal;
+  els.proposal.hidden = !p;
+  if (!p) return;
+  const left = secondsLeft(p, Date.now());
+  const status = p.status === "pending" && left === 0 ? "expired" : p.status;
+  els.proposal.dataset.status = status;
+  els.proposalTitle.textContent = proposalTitle[status];
+  els.proposalSummary.textContent = p.summary;
+  els.proposalOutcome.textContent = status === "expired" && !p.outcome
+    ? "Nothing was sent. Ask again if you still want it."
+    : p.outcome;
+  const waiting = status === "pending";
+  els.confirm.hidden = els.dismiss.hidden = !waiting;
+  els.confirm.disabled = state.status === "streaming";
+  els.proposalTime.textContent = waiting
+    ? `expires in ${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`
+    : "";
+}
+
 // Active cards show their elapsed time ticking until the server's figure
 // arrives; tick only while something is running.
 setInterval(() => {
   if (state.cards.some((c) => c.durationMs === null)) renderCards();
+  if (state.proposal && state.proposal.status === "pending") renderProposal();
 }, 100);
 
 // Hundreds of reasoning events arrive per answer; repaint at most once per
@@ -126,13 +164,22 @@ function apply(name, data) {
   }
 }
 
-async function ask(message) {
-  if (!message || state.status === "streaming") return;
+// send posts one request and streams its events into the state. start is
+// the page's own event for it: "ask" for a question, "confirm" for Confirm.
+// lastRequest is what Retry repeats: a question, or a confirmation (safe to
+// resend, since a pending action runs at most once).
+let lastRequest = null;
+
+async function send(start, startData, body) {
+  if (state.status === "streaming") return;
+  lastRequest = [start, startData, body];
   cardStarted.clear();
-  apply("ask", { message });
+  apply(start, startData);
   try {
-    await postChat({ conversation_id: state.conversationId, message }, (name, data) => {
-      apply(name, data);
+    await postChat(body(), (name, data) => {
+      // The reducer is pure, so the page supplies the arrival time the
+      // Confirm card's countdown is measured from.
+      apply(name, name === "confirm_request" ? { ...data, received_ms: Date.now() } : data);
       if (name === "done") {
         try {
           sessionStorage.setItem("conversation_id", data.conversation_id);
@@ -150,6 +197,11 @@ async function ask(message) {
   if (state.error) console.warn(`chat error ${state.error.code}`, state.error);
 }
 
+function ask(message) {
+  if (!message) return;
+  send("ask", { message }, () => ({ conversation_id: state.conversationId, message }));
+}
+
 els.form.addEventListener("submit", (e) => {
   e.preventDefault();
   const message = els.input.value.trim();
@@ -157,6 +209,8 @@ els.form.addEventListener("submit", (e) => {
   ask(message);
 });
 
-els.retry.addEventListener("click", () => ask(state.question));
+els.retry.addEventListener("click", () => lastRequest && send(...lastRequest));
+els.confirm.addEventListener("click", () => send("confirm", {}, () => confirmBody(state)));
+els.dismiss.addEventListener("click", () => apply("dismiss", {}));
 
 render();

@@ -22,13 +22,33 @@
         <p id="asked" class="text-term-dim"></p>
         <p id="answer" aria-live="polite" class="whitespace-pre-wrap leading-relaxed"></p>
         <div class="flex items-center gap-3">
-          <p id="status" role="status" class="text-term-dim data-[state=error]:text-term-error"></p>
+          <p id="status" role="status" class="text-term-dim data-[state=error]:text-term-error data-[state=streaming]:animate-pulse motion-reduce:animate-none"></p>
           <button id="retry" type="button" hidden
                   class="rounded border border-term-line px-2 py-1 text-term-fg hover:bg-term-panel focus-visible:outline-2 focus-visible:outline-term-accent">
             Retry
           </button>
         </div>
       </div>
+
+      <!-- The Confirm card (design §6, §14): shown when the model proposes an
+           action; nothing is sent until Confirm. data-status drives styling. -->
+      <section id="proposal" hidden aria-live="polite" aria-labelledby="proposal-title"
+               class="mx-4 mb-3 rounded border border-term-warn bg-term-panel p-3 data-[status=done]:border-term-accent data-[status=expired]:border-term-line data-[status=failed]:border-term-error">
+        <h2 id="proposal-title" class="font-bold text-term-warn"></h2>
+        <p id="proposal-summary" class="mt-1 whitespace-pre-wrap"></p>
+        <p id="proposal-outcome" class="mt-1 text-term-dim"></p>
+        <div class="mt-2 flex items-center gap-2">
+          <button id="confirm" type="button"
+                  class="rounded border border-term-accent px-3 py-1 text-term-accent hover:bg-term-bg focus-visible:outline-2 focus-visible:outline-term-accent disabled:opacity-50">
+            Confirm
+          </button>
+          <button id="dismiss" type="button"
+                  class="rounded border border-term-line px-3 py-1 text-term-fg hover:bg-term-bg focus-visible:outline-2 focus-visible:outline-term-accent">
+            Not now
+          </button>
+          <span id="proposal-time" class="ml-auto tabular-nums text-term-dim"></span>
+        </div>
+      </section>
 
       <form id="ask" class="flex gap-2 border-t border-term-line px-4 py-3">
         <label for="question" class="sr-only">Your question</label>
