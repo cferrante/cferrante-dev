@@ -332,3 +332,31 @@ An OS accessibility setting; respecting it means disabling non-essential animati
 
 A hard limit (e.g. CSS < 15 KB gzipped) checked automatically, so "fast" stays a rule rather than a
 hope.
+
+### Suggestion chips
+
+Small clickable buttons showing common questions ("What has he built in Go?"). Clicking one asks
+it without typing. *Why here:* each chip's answer is written and checked in advance and served
+from storage with no model call, so it appears instantly, a visible contrast with a live answer.
+Until the [judge](#llm-as-judge) exists (Phase 6), these stored answers are written by hand.
+
+### Cross-site scripting
+
+Often shortened to XSS. An attack where text an attacker controls ends up in a page as HTML or
+script and runs in the visitor's browser. *Why here:* the model's output is attacker-influenced
+(a [prompt injection](#prompt-injection) can make it write `<script>`), so the page always inserts
+model text as plain text, never as HTML, and only turns server-sent citations into links.
+
+### Content Security Policy
+
+An HTTP header (`Content-Security-Policy`) telling the browser which sources a page may load
+scripts, styles and connections from. Ours allows only the site itself and no inline script, so
+even if [cross-site scripting](#cross-site-scripting) slipped through, an injected script wouldn't
+run. A second, independent layer: [defense in depth](#defense-in-depth).
+
+### Deny-by-default permissions
+
+A runtime that gives code no access to files, the network or environment variables unless each
+is granted explicitly. Deno works this way; Node gives everything by default. *Why here:* the
+frontend's JavaScript tests run under Deno with no permissions, so a buggy or compromised test
+can't touch the machine.

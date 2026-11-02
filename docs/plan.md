@@ -44,7 +44,7 @@ marked 🧑 need you (accounts, payments, decisions); everything else I can driv
 | 🧑 [D4] thought stream on fallback | 5.2 | proposed: narration only |
 | 🧑 [D5] Lambda architecture | 7.6 | proposed: x86_64, revisited by measurement in 7.6 |
 | 🧑 Doc-link checker in CI? | 0.2 | ✅ yes (done) |
-| 🧑 JS test runner for the frontend (no npm toolchain) | 4.2 | proposed: Deno (single binary); alternative: Node's built-in `node --test` |
+| 🧑 JS test runner for the frontend (no npm toolchain) | 4.2 | ✅ Deno, pinned (2026-11-02); Node rejected for its security upkeep |
 | 🧑 Groq account + API key (free) | 1.5 | ✅ key in SSM via `infra/bootstrap/aws/06-groq-key.sh` |
 | 🧑 Neon account (free) | 9.1 | not started |
 
@@ -148,12 +148,17 @@ Cost: $0. The only downloads are the two Ollama models in 3.5 (≈ 2.9 GB; RAM i
 
 ## Phase 4 — Frontend (M2, $0)
 
+Contract: [design §14](design.md#14-frontend). Tools live in git-ignored `build/tools/`, fetched by
+a script that pins each version and verifies its checksum: the Tailwind v4 standalone CLI
+(106 MB) and Deno (40 MB zipped), each a release at least two weeks old. **Disk check first.**
+
 | Step | Test that must fail first | Done when |
 |---|---|---|
-| **4.1** Tailwind standalone CLI (pinned version, checksum verified, **disk check**), `make css` | CSS budget test (< 15 KB gzipped) and required-classes test fail (no CSS yet) | Both pass |
-| **4.2** Split-pane page + SSE client (`fetch` stream reader) | JS unit test: parser handles events split across network chunks | Thought stream renders live against `make dev` |
-| **4.3** Action cards with live durations, `data-state` styling, reduced motion | Test: every `step_start` creates a card; `step_end` fills duration | Cards light up and show real timings |
-| **4.4** Citations + suggested-question chips (pre-verified answer path) | Test: chip request returns stored answer with no model call | Chips answer instantly; citations link to sources |
+| **4.1** Fetch the pinned tools; `make css` | CSS budget (< 15 KB gzipped) and required-classes checks fail (no CSS yet) | Both pass, locally and in CI |
+| **4.2** The page, served by `make dev` with the CSP header; SSE client with the body hash | `deno test`: an event split across network chunks parses once; the body hash matches a known SHA-256; the reducer builds the thought stream and answer. Go: `/` is served with the CSP header | The thought stream renders live against `make dev` (**first click-through**) |
+| **4.3** Action cards with live durations, `data-state` styling, reduced motion; errors with Retry | Every `step_start` creates a card and `step_end` fills its duration; a retryable error offers Retry | Cards light up with real timings |
+| **4.4** The Confirm card | `confirm_request` creates a card; Confirm sends `{confirm:{action_id}}`; an expired card disables its button; each outcome is shown | An invitee proposes, confirms and sees "Done" |
+| **4.5** Citations and suggestion chips (hand-written answers) | Go: a `suggested_id` streams the stored answer with no model call. Deno: a citation with a `javascript:` URL renders as text | Chips answer instantly; citations link to sources |
 
 **M2:** full local experience. Click-through steps provided in the PR.
 
@@ -284,6 +289,9 @@ Any change from this plan: what changed, why, and which step.
 | 2026-11-02 | 3.6 | A confirmation turn runs only the claimed action, with no retrieval or model call; refusals use the error codes now in [design §6](design.md#6-tools-and-authorization); a foreign action id gets the same answer as a missing one | Confirming is a button press, not a question; one code per cause lets the UI explain it; identical answers mean action ids can't be probed |
 | 2026-11-02 | 3.6 | The turn deadline is configurable (`Agent.Deadline`; `make dev` reads `TURN_DEADLINE`, default 5 minutes), and `REASONING_EFFORT=none` omits the field | Live run: with tools in the prompt, qwen3:4b on the CPU was still deliberating at 60 s and at 5 minutes. llama3.1, which has no thinking, completed the tool call in 50 s but rejects `reasoning_effort`, and an empty variable means unset |
 | 2026-11-02 | 3.6 | When tools are offered, the system prompt adds that nothing is sent until the visitor confirms; the read-only tools' answers come from `CONTACT_OPTIONS` and `AVAILABILITY`; side effects record to an `Outbox` interface | The first live run showed the model unsure whether the "use only the passages" prompt let it act at all; configurable per your preference; Postgres and [D2] are later phases |
+| 2026-11-02 | 4.x | Phase 4 gains [design §14](design.md#14-frontend) and a Confirm-card step (4.4); citations and chips move to 4.5 | No step built the Confirm button that 3.6's confirmations need; the frontend's safety rules (text-only model output, CSP) and serving needed a contract |
+| 2026-11-02 | 4.2 | JavaScript tests run under Deno, not Node | Node v24 is installed, but you've found keeping Node patched painful. Deno is one pinned binary with no npm packages and deny-by-default permissions, so tests run with no file, network or environment access |
+| 2026-11-02 | 4.5 | Suggested answers are hand-written until the judge exists (Phase 6), served from a stored answers file | The frontend only needs the stored-answer path; there's no real corpus yet; generating with the dev model would be unjudged and rebuilt in Phase 6 anyway |
 
 ## Code review log
 
