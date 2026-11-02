@@ -7,6 +7,9 @@
 import { postChat } from "./client.js";
 import { cardDetails, cardTitle, formatDuration } from "./format.js";
 import { initialState, reduce } from "./state.js";
+// Built by `make site` (orchestrator/cmd/siteconfig) from SITE_NAME,
+// ASSISTANT_NAME and MESSAGES_FILE; shown as text only.
+import site from "../dist/config.js";
 
 const $ = (id) => document.getElementById(id);
 const els = {
@@ -33,7 +36,11 @@ const thoughtClass = {
   model: "whitespace-pre-wrap text-term-dim",
 };
 
-let state = initialState();
+$("site-name").textContent = site.siteName;
+$("assistant-name").textContent = site.assistantName;
+document.title = `${site.siteName} ${site.assistantName}`;
+
+let state = initialState(site);
 try {
   state = { ...state, conversationId: sessionStorage.getItem("conversation_id") || "" };
 } catch { /* storage unavailable: start a new conversation */ }

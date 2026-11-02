@@ -8,7 +8,7 @@ import (
 )
 
 // systemPrompt is a first version; Phase 5 and the evals in Phase 6 tune it.
-const systemPrompt = `You are the receptionist on the site owner's portfolio website.
+const systemPrompt = `You are the {assistant} on the site owner's portfolio website.
 Answer visitors' questions about the owner's work using only the numbered passages
 in the user's message. After each claim, cite the passage it comes from as [n],
 for example [1] or [1][3]. If the passages don't answer the question, say so
@@ -37,4 +37,15 @@ func prompt(chunks []Chunk, history []model.Message, question string) model.Requ
 	fmt.Fprintf(&b, "\nQuestion: %s", question)
 	msgs := append(append([]model.Message(nil), history...), model.Message{Role: model.User, Content: b.String()})
 	return model.Request{System: systemPrompt, Messages: msgs}
+}
+
+// DefaultAssistantName is used when none is configured (ASSISTANT_NAME).
+const DefaultAssistantName = "Context Concierge"
+
+// named puts the assistant's name into the system prompt.
+func named(system, name string) string {
+	if name == "" {
+		name = DefaultAssistantName
+	}
+	return strings.ReplaceAll(system, "{assistant}", name)
 }

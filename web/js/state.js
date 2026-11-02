@@ -2,8 +2,9 @@
 // (design §14). The page renders from this state; nothing here touches the DOM.
 import { friendlyError } from "./messages.js";
 
-export function initialState() {
+export function initialState(config = {}) {
   return {
+    config, // site settings from dist/config.js: names and message wording
     status: "idle", // idle | streaming | done | error
     question: "",
     thoughts: [], // [{source: "agent"|"model", text}]
@@ -67,7 +68,7 @@ export function reduce(state, name, data) {
         ),
       };
     case "error":
-      return { ...state, status: "error", error: { code: data.code, ...friendlyError(data) } };
+      return { ...state, status: "error", error: { code: data.code, ...friendlyError(data, state.config) } };
   }
   return state; // events the page doesn't show yet
 }

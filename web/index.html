@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>cferrante.dev receptionist</title>
+  <title>cferrante.dev Context Concierge</title>
   <link rel="stylesheet" href="/dist/app.css">
   <script type="module" src="/js/app.js"></script>
 </head>
@@ -11,7 +11,8 @@
   <main class="grid min-h-screen grid-cols-1 md:h-screen md:grid-cols-2">
     <section aria-label="Thought stream" class="flex min-h-0 flex-col border-term-line md:border-r">
       <header class="border-b border-term-line px-4 py-3">
-        <h1 class="font-bold text-term-accent">cferrante.dev <span class="text-term-dim">receptionist</span></h1>
+        <h1 class="font-bold text-term-accent"><span id="site-name">cferrante.dev</span>
+          <span id="assistant-name" class="text-term-dim">Context Concierge</span></h1>
       </header>
 
       <div id="thoughts" role="log" aria-label="Reasoning and agent steps"

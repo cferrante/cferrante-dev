@@ -327,3 +327,18 @@ func TestNarrationGroupsPassagesFromTheSameDocument(t *testing.T) {
 		t.Errorf("narrate one = %q", got)
 	}
 }
+
+func TestSystemPromptUsesTheAssistantName(t *testing.T) {
+	m := &fake.Model{Name: "groq", Events: answer("ok")}
+	h := newHarness(m, &fakeRetriever{chunks: twoChunks})
+	h.turn(t, context.Background(), auth.Caller{}, TurnRequest{Message: "q"})
+	h.agent.AssistantName = "Concierge Prime"
+	h.turn(t, context.Background(), auth.Caller{}, TurnRequest{Message: "q"})
+	reqs := m.Requests()
+	if !strings.Contains(reqs[0].System, "You are the Context Concierge") {
+		t.Errorf("default system prompt:\n%s", reqs[0].System)
+	}
+	if !strings.Contains(reqs[1].System, "You are the Concierge Prime") || strings.Contains(reqs[1].System, "receptionist") {
+		t.Errorf("configured system prompt:\n%s", reqs[1].System)
+	}
+}
