@@ -24,10 +24,12 @@ const maxBody = 16 << 10
 
 // request is the POST /chat body (design §3).
 type request struct {
-	ConversationID string          `json:"conversation_id"`
-	Message        string          `json:"message"`
-	SuggestedID    *string         `json:"suggested_id"`
-	Confirm        json.RawMessage `json:"confirm"`
+	ConversationID string  `json:"conversation_id"`
+	Message        string  `json:"message"`
+	SuggestedID    *string `json:"suggested_id"`
+	Confirm        *struct {
+		ActionID string `json:"action_id"`
+	} `json:"confirm"`
 }
 
 // Turner runs a turn; *agent.Agent implements it.
@@ -54,16 +56,19 @@ func (h *Chat) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	msg := strings.TrimSpace(req.Message)
+	confirm := ""
 	switch {
+	case req.Confirm != nil:
+		// A confirmation needs no message: it runs the proposed action (design §6).
+		if confirm = strings.TrimSpace(req.Confirm.ActionID); confirm == "" {
+			httpError(w, http.StatusBadRequest, "confirm.action_id is empty")
+			return
+		}
 	case msg == "":
 		httpError(w, http.StatusBadRequest, "message is empty")
 		return
 	case utf8.RuneCountInString(msg) > MaxMessage:
 		httpError(w, http.StatusBadRequest, "message is longer than 2000 characters")
-		return
-	case len(req.Confirm) > 0 && string(req.Confirm) != "null":
-		// Confirmations arrive with tools in plan step 3.6.
-		httpError(w, http.StatusNotImplemented, "confirmations are not supported yet")
 		return
 	}
 	caller, err := h.Auth.Authenticate(r)
@@ -84,7 +89,9 @@ func (h *Chat) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	stream := sse.New(w, flusher.Flush, h.Clock)
 	defer stream.Close()
 	// r.Context() ends when the client disconnects, which cancels the turn.
-	_ = h.Agent.Turn(r.Context(), caller, agent.TurnRequest{ConversationID: req.ConversationID, Message: msg}, stream)
+	_ = h.Agent.Turn(r.Context(), caller, agent.TurnRequest{
+		ConversationID: req.ConversationID, Message: msg, ConfirmActionID: confirm,
+	}, stream)
 }
 
 func httpError(w http.ResponseWriter, status int, msg string) {

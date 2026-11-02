@@ -11,6 +11,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Getenv looks a variable up; os.Getenv in production, a map in tests.
@@ -59,6 +60,21 @@ func (e *Env) Bool(name string, def bool) bool {
 		return def
 	}
 	return b
+}
+
+// Duration returns the variable as a Go duration such as "90s" or "5m", or
+// def when unset.
+func (e *Env) Duration(name string, def time.Duration) time.Duration {
+	v := e.get(name)
+	if v == "" {
+		return def
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil {
+		e.fail(fmt.Errorf("%s=%q: want a duration such as 90s or 5m", name, v))
+		return def
+	}
+	return d
 }
 
 // Err is the first invalid variable, if any.

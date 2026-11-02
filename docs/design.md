@@ -96,7 +96,9 @@ answer cites `[n]`, the orchestrator emits a `citation` event for chunk n; later
 same n emit nothing. A marker split across streamed chunks (`[` then `2]`) still counts once, and
 a number outside 1…k is ignored.
 
-**Turn limits.** At most 3 tool rounds per turn, and a deadline for the whole turn. A client
+**Turn limits.** At most 3 tool rounds per turn (a 4th request for tools ends the turn with
+`tool_limit`), and a deadline for the whole turn: 60 s by default, configurable because local
+CPU inference is far slower (`make dev` uses 5 minutes, `TURN_DEADLINE`). A client
 disconnect cancels the turn's context; every open step still gets its `step_end` (status
 `error`), per rule 1.
 
@@ -326,6 +328,17 @@ confirmed, which is evidence for the adversarial evals. (Considered: a signed to
 arguments. It still needs a store of executed tokens to run exactly once, so it adds a key to
 manage without removing the database write.) What is actually sent is then recorded in Postgres
 as before.
+
+**As built in step 3.6:** a confirmation turn runs only the claimed action: no retrieval and no
+model call. It streams a tool step and a `Done: …` token. A refused confirmation ends with an
+`error` event: `action_not_found` (missing *or* another caller's id, so ids can't be probed),
+`action_expired`, `action_already_done`, or `not_authorized` (the caller lost the invitee group
+since proposing). A run that fails is not retried (`action_failed`). Bad tool arguments, and
+calls the executor refuses, go back to the model as the tool's result, so it can explain or ask.
+When tools are offered, the system prompt adds that nothing is sent until the visitor confirms.
+Side-effecting tools write to an `Outbox` interface: in memory in Phase 3 (`make dev` prints
+each record), Postgres and the notification channel [[D2]](#d2-notification-channel) later. The
+read-only tools' answers come from configuration (`CONTACT_OPTIONS`, `AVAILABILITY`).
 
 Tools on the hot path read static config, not Postgres, keeping the database off the [hot path](concepts.md#hot-path).
 Side-effect writes happen after the user confirms, where a little latency is acceptable.

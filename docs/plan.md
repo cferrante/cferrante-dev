@@ -122,6 +122,9 @@ and that is recorded as a deviation.
 
 ## Phase 3 — Orchestrator core, Go, fake model ($0)
 
+**✅ Done 2026-11-02** (PRs #40–#46 and the 3.6 PR). `make dev` answers questions with citations and
+proposes, confirms and records actions on the laptop over Ollama.
+
 Everything runs against a fake model and fake retriever until 3.5, which uses Ollama on the
 laptop. Contracts: [design §3](design.md#3-streaming-protocol-sse) (stream, citations, turn
 limits, `confirm_request`), [§4](design.md#4-model-layer) (models, router), [§5](design.md#5-retrieval-engine-c)
@@ -139,7 +142,7 @@ wraps it for Lambda. No new Go dependencies.
 | **3.3** The answer turn: `Retriever` interface (engine binding behind it), `ConversationStore` (in memory), prompt with numbered context, streaming, citations, turn limits | With fake model and retriever: events arrive as `step_start(retrieval)`, `step_end`, `thought`, `token`, `citation`, `done`; a `[2]` split across chunks yields one citation; an out-of-range `[9]` yields none; a cancelled turn still closes every step | The full turn works against fakes **✅ 2026-11-01** (engine-backed retriever moved to 3.4) |
 | **3.4** Indexer CLI: corpus front matter, chunking (our own splitter: headings, paragraphs, then sentence boundaries, with overlap), embedding via interface (fake embedder in tests), index + sidecar written atomically | Test on a fixture corpus: expected chunk ids, boundaries and access bits; a missing `access` key is an error; a failed write leaves no file | Index loads in the engine and finds known chunks. Decide the deferred Unicode-space tokenizer question against real corpus text **✅ 2026-11-01** (Unicode spaces now split tokens) |
 | **3.5** `make dev`: local HTTP server, SSE over Ollama via `model/oai` (the spike 1.5 client, moved and shared with Groq); a small reasoning model such as `qwen3:4b` (~2.6 GB) and `nomic-embed-text` (~0.3 GB); **disk check first** | Recorded Ollama stream replay: reasoning and text arrive as separate events; smoke test: `curl -N localhost` gets `thought`, `token`, `done` in order | Works end to end on the laptop, with click-through steps **✅ 2026-11-01** (37 s per answer on the CPU; see benchmarks) |
-| **3.6** Tools: filtering, executor enforcement, confirmation through pending actions (`PendingActions`, in memory) | Test: an anonymous caller's forged `send_message` is refused; an unconfirmed action doesn't run; another caller's or an expired `action_id` is refused; a second confirm runs nothing | Refused with `authorized:false`; each action runs at most once |
+| **3.6** Tools: filtering, executor enforcement, confirmation through pending actions (`PendingActions`, in memory) | Test: an anonymous caller's forged `send_message` is refused; an unconfirmed action doesn't run; another caller's or an expired `action_id` is refused; a second confirm runs nothing | Refused with `authorized:false`; each action runs at most once **✅ 2026-11-02** (checked live with llama3.1) |
 
 Cost: $0. The only downloads are the two Ollama models in 3.5 (≈ 2.9 GB; RAM is 15 GB).
 
@@ -278,6 +281,9 @@ Any change from this plan: what changed, why, and which step.
 | 2026-11-01 | 3.5 | The Ollama embedder sends texts without nomic-embed-text's recommended `search_document:` / `search_query:` prefixes | Keeps one `Embed` method for documents and queries. Whether prefixes improve hit@5 is a measurement for the Phase 6 evals; production uses Titan ([D1]), which has no prefixes |
 | 2026-11-01 | 3.5 | `POST /chat` with `confirm` answers 501 until 3.6; `oai` refuses `ResponseSchema` until the judge (Phase 6); `model.Result` has no generation span, so tokens/s comes from the inference step's elapsed time minus TTFT | Unsupported inputs fail loudly instead of being ignored; one timing source for every provider |
 | 2026-11-01 | 3.5 | Every `make dev` setting (address, corpus, index, Ollama URL, models, embedding size, reasoning effort, invitee) is an environment variable with a flag override, loaded from the shell or a git-ignored `.env`; new `orchestrator/config` package and `.env.example`; [design §11](design.md#11-configuration-and-secrets) updated | Your preference after the click-through: configurable options rather than hardcoded values, as design §11 already intended. A Go loader instead of Make's `-include .env` because Make keeps quotes literally and lets the file override the shell |
+| 2026-11-02 | 3.6 | A confirmation turn runs only the claimed action, with no retrieval or model call; refusals use the error codes now in [design §6](design.md#6-tools-and-authorization); a foreign action id gets the same answer as a missing one | Confirming is a button press, not a question; one code per cause lets the UI explain it; identical answers mean action ids can't be probed |
+| 2026-11-02 | 3.6 | The turn deadline is configurable (`Agent.Deadline`; `make dev` reads `TURN_DEADLINE`, default 5 minutes), and `REASONING_EFFORT=none` omits the field | Live run: with tools in the prompt, qwen3:4b on the CPU was still deliberating at 60 s and at 5 minutes. llama3.1, which has no thinking, completed the tool call in 50 s but rejects `reasoning_effort`, and an empty variable means unset |
+| 2026-11-02 | 3.6 | When tools are offered, the system prompt adds that nothing is sent until the visitor confirms; the read-only tools' answers come from `CONTACT_OPTIONS` and `AVAILABILITY`; side effects record to an `Outbox` interface | The first live run showed the model unsure whether the "use only the passages" prompt let it act at all; configurable per your preference; Postgres and [D2] are later phases |
 
 ## Code review log
 
@@ -341,6 +347,8 @@ Outcome of each review: finding, decision (fixed / won't fix / deferred), and wh
 | 2026-11-01 | 3.5 | Live run: the thought stream listed "Project Alpha" three times | Fixed, test first: one entry per document with a passage count; the test also caught "1 passages" |
 | 2026-11-01 | 3.5 | Process: my cleanup `pkill -f 'orchestrator/cmd/dev'` matched and killed its own shell (the text was in its command line) | No harm beyond a failed command; the dev server is now tracked by its PID |
 | 2026-11-01 | 3.5 (your click-through) | Ctrl+C on `make dev` printed `make: *** [Makefile:45: dev] Error 1` | Reproduced: the server itself exits 0 on SIGINT, but `go run` exits 1 when interrupted. Fixed: `make dev` builds the binary and runs it directly, and the server prints `stopped`. The automated tests missed it because they call the handler and setup, never `go run` under a terminal signal |
+| 2026-11-02 | 3.6 | Live run found what the fakes couldn't: qwen3:4b never settled on a tool call within 5 minutes on the CPU; llama3.1 called `send_message` correctly but filled `reply_to` with "none" | Documented llama3.1 with `REASONING_EFFORT=none` for local tool testing; reworded the `reply_to` description to say omit it. Confirm ran once, the second confirm got `action_already_done`, the outbox held one record |
+| 2026-11-02 | 3.6 | Test-harness slips: a fake-model break that didn't compile (filter lacked "build failed"), a `sed` that matched nothing, nil tool functions panicking and aborting the run, and a script that proposed only once | All fixed; break filters now always include "build failed"; ~20 breaks across tools, agent, handler and dev, all caught, including the two authorization layers separately and a data race when a claim skips the lock |
 
 ## Spike findings
 
