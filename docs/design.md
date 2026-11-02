@@ -556,3 +556,35 @@ The account, sign-in, budget and zone are created by idempotent scripts in
 the account to exist before it can run, and these rarely-changing resources are safer outside
 state it can destroy.
 
+## 14. Frontend
+
+Plain HTML and JavaScript (ES modules, no framework, no npm packages) in `web/`, styled with the
+Tailwind v4 standalone CLI ([README](../README.md#frontend-conventions) has the conventions).
+Plan Phase 4 builds it.
+
+- **Served:** locally `make dev` serves `web/` at `/`, on the same address as `/chat`, so no CORS
+  setup is needed; in production S3 + CloudFront (Phase 7).
+- **SSE client:** `fetch()` with a stream reader (design [§3](#3-streaming-protocol-sse)); an
+  event split across network chunks is parsed once. Every `POST /chat` sends the body's SHA-256 as
+  `x-amz-content-sha256` (Web Crypto), which CloudFront requires (spike 1.4).
+- **State:** a pure reducer turns each event into the next UI state; a thin layer updates the
+  page. The reducer and parser are unit-tested; the page is checked by click-through.
+- **Rendering safety:** model output is always inserted as text (`textContent`), never as HTML. A
+  citation becomes a link only from a `citation` event, and only for a relative or `https:` URL.
+  Pages are served with `Content-Security-Policy: default-src 'self'; script-src 'self';
+  style-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'self';
+  frame-ancestors 'none'` and `X-Content-Type-Options: nosniff`.
+- **Confirm card:** a `confirm_request` shows its summary, a Confirm button and the time left;
+  Confirm sends `{"confirm":{"action_id":…}}` and the card shows the outcome
+  ([§6](#6-tools-and-authorization)).
+- **Suggested questions:** chips come from the server's stored answers file (id, question,
+  answer, cited chunk ids, access). A `suggested_id` request streams the stored answer with a
+  `cache` step and no model call. Answers are hand-written until the judge (Phase 6) can generate
+  and verify them.
+- **Session and errors:** the conversation id lives in `sessionStorage`, so a reload continues
+  the conversation; errors show in the stream, with Retry when `retryable`.
+- **Accessibility:** the answer region is `aria-live="polite"`; motion is off under
+  [reduced motion](concepts.md#reduced-motion); everything works from the keyboard; the panes
+  stack on narrow screens.
+- **Tests:** `deno test` with no permissions ([deny-by-default](concepts.md#deny-by-default-permissions)),
+  run by `make test` and CI.
