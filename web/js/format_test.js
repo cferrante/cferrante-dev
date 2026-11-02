@@ -60,3 +60,13 @@ Deno.test("detail lines show the measured numbers", () => {
   );
   assertEquals(cardDetails({ kind: "retrieval" }), []);
 });
+
+Deno.test("the inference card says why the model stopped, unless it finished normally", () => {
+  const base = { model: "qwen3:4b", ttft_ms: 2700, tokens_in: 470, tokens_out: 220, tokens_per_s: 2.2 };
+  assertEquals(
+    cardDetails({ kind: "inference", detail: { ...base, stop_reason: "length" } }).at(-1),
+    "stopped: length",
+  );
+  assertEquals(cardDetails({ kind: "inference", detail: { ...base, stop_reason: "stop" } }).length, 3);
+  assertEquals(cardDetails({ kind: "inference", detail: base }).length, 3);
+});

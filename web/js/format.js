@@ -42,6 +42,7 @@ export function cardDetails(card) {
         `TTFT ${formatDuration(d.ttft_ms)}${speed}`,
         `${d.tokens_in} in · ${d.tokens_out} out${cached}`,
       ]
+        .concat(d.stop_reason && d.stop_reason !== "stop" ? [`stopped: ${d.stop_reason}`] : [])
         .filter(Boolean);
     }
     case "tool":

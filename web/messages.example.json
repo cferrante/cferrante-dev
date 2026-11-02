@@ -7,5 +7,6 @@
   "tool_limit": "That needed too many steps. Try asking more simply.",
   "incomplete": "The answer was cut off. Please try again.",
   "session_ended": "Your session has ended. Please sign in again.",
-  "server_error": "Something went wrong on our side. Please try again."
+  "server_error": "Something went wrong on our side. Please try again.",
+  "empty_answer": "I didn't manage to put an answer together that time. Please try again."
 }
