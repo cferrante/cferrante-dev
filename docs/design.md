@@ -576,9 +576,10 @@ Plan Phase 4 builds it.
   frame-ancestors 'none'` and `X-Content-Type-Options: nosniff`.
 - **Confirm card:** a `confirm_request` shows its summary, a Confirm button, Not now and the time
   left; Confirm sends `{"confirm":{"action_id":…}}` in the same conversation and the card shows
-  the outcome: Done, Already done, Expired or Not sent ([§6](#6-tools-and-authorization)). The
-  card stays across new questions until handled, and a new proposal replaces it. Not now only
-  hides it: nothing is sent, and the action expires. Confirmation refusals never offer Retry;
+  the outcome: Done, Already done, Expired or Not sent ([§6](#6-tools-and-authorization)). There
+  is one card per pending action: a new proposal adds a card and never replaces one still
+  waiting; a new question clears handled and expired cards. Not now hides only its card:
+  nothing is sent, and the action expires. Confirmation refusals never offer Retry;
   Retry after a network failure repeats the last request, which is safe because an action runs
   at most once.
 - **Suggested questions:** chips come from the server's stored answers file (id, question,
