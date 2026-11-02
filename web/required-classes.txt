@@ -11,3 +11,11 @@ text-term-accent
 text-term-dim
 data-[state=error]:text-term-error
 sr-only
+data-[state=active]:border-term-accent
+data-[state=error]:border-term-error
+data-[state=fallback]:border-term-warn
+group-data-[state=active]:animate-pulse
+group-data-[state=ok]:bg-term-accent
+group-data-[state=error]:bg-term-error
+group-data-[state=fallback]:bg-term-warn
+motion-reduce:animate-none
