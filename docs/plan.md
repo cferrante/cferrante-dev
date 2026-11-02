@@ -51,8 +51,9 @@ marked 🧑 need you (accounts, payments, decisions); everything else I can driv
 ([D1]–[D5] are defined in [design §12](design.md#12-open-decisions).)
 
 **Toolchain (checked 2026-10-30):** Go 1.27.1, g++ 15.2, CMake 4.2.3, Make 4.4.1, AWS CLI
-2.37.5, Ollama 0.33.3, gh 2.46.0 are installed (and `shellcheck` for `make lint`: `sudo apt install shellcheck`; CI runners have it). OpenTofu 1.13.1 (standalone binary, user-local). **Missing:** Tailwind standalone
-CLI (4.1), Zig (only if 1.2 needs it). Local glibc is **2.43**; Lambda's Amazon Linux 2023 has
+2.37.5, Ollama 0.33.3, gh 2.46.0 are installed (and `shellcheck` for `make lint`: `sudo apt install shellcheck`; CI runners have it). OpenTofu 1.13.1 (standalone binary, user-local). Tailwind v4.3.3 and Deno v2.9.7
+are fetched pinned into `build/tools` by `make tools` (4.1); the `tailwindcss` on `PATH` is an
+unrelated Ruby gem wrapper. Node v24 (nvm) is installed but not used. Local glibc is **2.43**; Lambda's Amazon Linux 2023 has
 **2.34**, which is why step 1.2 exists. Disk is checked (`df -h /`) before every install or
 download; stop if under 5 GB free.
 
@@ -154,7 +155,7 @@ a script that pins each version and verifies its checksum: the Tailwind v4 stand
 
 | Step | Test that must fail first | Done when |
 |---|---|---|
-| **4.1** Fetch the pinned tools; `make css` | CSS budget (< 15 KB gzipped) and required-classes checks fail (no CSS yet) | Both pass, locally and in CI |
+| **4.1** Fetch the pinned tools; `make css` | CSS budget (< 15 KB gzipped) and required-classes checks fail (no CSS yet) | Both pass, locally and in CI **✅ 2026-11-02** (1,894 bytes gzipped; Tailwind v4.3.3, Deno v2.9.7) |
 | **4.2** The page, served by `make dev` with the CSP header; SSE client with the body hash | `deno test`: an event split across network chunks parses once; the body hash matches a known SHA-256; the reducer builds the thought stream and answer. Go: `/` is served with the CSP header | The thought stream renders live against `make dev` (**first click-through**) |
 | **4.3** Action cards with live durations, `data-state` styling, reduced motion; errors with Retry | Every `step_start` creates a card and `step_end` fills its duration; a retryable error offers Retry | Cards light up with real timings |
 | **4.4** The Confirm card | `confirm_request` creates a card; Confirm sends `{confirm:{action_id}}`; an expired card disables its button; each outcome is shown | An invitee proposes, confirms and sees "Done" |
@@ -357,6 +358,8 @@ Outcome of each review: finding, decision (fixed / won't fix / deferred), and wh
 | 2026-11-01 | 3.5 (your click-through) | Ctrl+C on `make dev` printed `make: *** [Makefile:45: dev] Error 1` | Reproduced: the server itself exits 0 on SIGINT, but `go run` exits 1 when interrupted. Fixed: `make dev` builds the binary and runs it directly, and the server prints `stopped`. The automated tests missed it because they call the handler and setup, never `go run` under a terminal signal |
 | 2026-11-02 | 3.6 | Live run found what the fakes couldn't: qwen3:4b never settled on a tool call within 5 minutes on the CPU; llama3.1 called `send_message` correctly but filled `reply_to` with "none" | Documented llama3.1 with `REASONING_EFFORT=none` for local tool testing; reworded the `reply_to` description to say omit it. Confirm ran once, the second confirm got `action_already_done`, the outbox held one record |
 | 2026-11-02 | 3.6 | Test-harness slips: a fake-model break that didn't compile (filter lacked "build failed"), a `sed` that matched nothing, nil tool functions panicking and aborting the run, and a script that proposed only once | All fixed; break filters now always include "build failed"; ~20 breaks across tools, agent, handler and dev, all caught, including the two authorization layers separately and a data race when a claim skips the lock |
+| 2026-11-02 | 4.1 | The `tailwindcss` already on `PATH` turned out to be a Ruby gem wrapper script (from a mise Ruby install), not the standalone CLI | Left alone; the build uses only the pinned binary in `build/tools`. `fetch-tools.sh` also enforces the 5 GB free-disk rule before downloading |
+| 2026-11-02 | 4.1 | Removing a class from the page didn't fail the required-classes check: Tailwind scanned `web/required-classes.txt` itself, so every listed class was generated from the list, and the check could never fail | Fixed: `@source not` excludes the list and the built output from scanning; the same break now fails `make css-check` |
 
 ## Spike findings
 
