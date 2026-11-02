@@ -149,6 +149,8 @@ Cost: $0. The only downloads are the two Ollama models in 3.5 (≈ 2.9 GB; RAM i
 
 ## Phase 4 — Frontend (M2, $0)
 
+**✅ Built 2026-11-02** (PRs #49–#56 and the 4.5 PR); M2 once the 4.5 click-through passes.
+
 Contract: [design §14](design.md#14-frontend). Tools live in git-ignored `build/tools/`, fetched by
 a script that pins each version and verifies its checksum: the Tailwind v4 standalone CLI
 (106 MB) and Deno (40 MB zipped), each a release at least two weeks old. **Disk check first.**
@@ -160,7 +162,7 @@ a script that pins each version and verifies its checksum: the Tailwind v4 stand
 | **4.3** Action cards with live durations, `data-state` styling, reduced motion; errors with Retry | Every `step_start` creates a card and `step_end` fills its duration; a retryable error offers Retry | Cards light up with real timings **✅ 2026-11-02** (built; awaiting your click-through) |
 | **4.3a** Name and messages configurable: `SITE_NAME`, `ASSISTANT_NAME` (default "Context Concierge", also in the system prompt), `MESSAGES_FILE`; `make site` builds `web/dist/config.js` | Go: unknown or empty message keys stop the build; values can't break out of the module; the system prompt uses the name. Deno: overrides and placeholders apply; Retry is unchanged by wording | The page and the model use the configured names; a messages file changes the wording **✅ 2026-11-02** (built; awaiting your click-through) |
 | **4.4** The Confirm card | `confirm_request` creates a card; Confirm sends `{confirm:{action_id}}`; an expired card disables its button; each outcome is shown | An invitee proposes, confirms and sees "Done" **✅ 2026-11-02** (built; awaiting your click-through) |
-| **4.5** Citations and suggestion chips (hand-written answers) | Go: a `suggested_id` streams the stored answer with no model call. Deno: a citation with a `javascript:` URL renders as text | Chips answer instantly; citations link to sources |
+| **4.5** Citations and suggestion chips (hand-written answers) | Go: a `suggested_id` streams the stored answer with no model call. Deno: a citation with a `javascript:` URL renders as text | Chips answer instantly; citations link to sources **✅ 2026-11-02** (built; awaiting your click-through; stored answer p50 0.9 ms locally) |
 
 **M2:** full local experience. Click-through steps provided in the PR.
 
@@ -309,6 +311,7 @@ Any change from this plan: what changed, why, and which step.
 | 2026-11-02 | 4.5 | Suggested answers are hand-written until the judge exists (Phase 6), served from a stored answers file | The frontend only needs the stored-answer path; there's no real corpus yet; generating with the dev model would be unjudged and rebuilt in Phase 6 anyway |
 | 2026-11-02 | 4.3 | Errors are shown as plain sentences per cause (`messages.js`), with the code kept in the console and `data-code`; an unreachable server is its own case | Your click-through: "Error: Failed to fetch" is the browser's raw text. Visitors get a sentence and, when it helps, Retry; the raw detail stays available for debugging |
 | 2026-11-02 | 4.3a | Added step 4.3a: the assistant is called the **Context Concierge** (configurable), and the friendly messages' wording is configurable; README and [design §14](design.md#14-frontend) updated; the plan's dated log entries keep "receptionist" as history | Your request after the 4.3 click-through. Build-time config keeps the production page static; wording is configurable but Retry behaviour is not; a Go test keeps the generator's keys and the page's defaults in step |
+| 2026-11-02 | 4.5 | `GET /suggested` lists chips; the answers file is checked at startup (including that a public answer can't cite an invitee-only chunk); the retriever gained a chunk lookup by id; citations link the whole `[n]` and open in a new tab; a Sources list follows the answer | The leak check makes a dangerous mistake in a hand-written file impossible to ship; a bigger click target; links shouldn't lose the conversation |
 
 ## Code review log
 

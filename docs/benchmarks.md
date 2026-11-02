@@ -106,6 +106,7 @@ GCC 15.2 `-O3`, no `-march`.
 | 2026-11-01 | #33 | C++ hybrid scaling, 50k × 512 | 5.600 ms | 6.351 ms | 8.013 ms | |
 | 2026-11-01 | before #36 | Index load (`rag_index_load`), 2k × 512, 5.5 MB file | 16.4 ms | — | — | Median of 11 (two runs: 16.4, 16.6 ms). Byte-at-a-time iostream read |
 | 2026-11-01 | #36 | Index load (`rag_index_load`), 2k × 512, 5.5 MB file | 11.2 ms | — | — | Median of 11 (two runs: 11.2, 11.5 ms). One sized `fread`; the rest is parsing and building postings. Part of every cold start |
+| 2026-11-02 | 4.5 | Suggested question, stored answer (request → `done`) | 0.9 ms | 1.7 ms | — | n = 20 after 1 warm-up, max 4.5 ms; `make dev` over loopback, so no CloudFront or network hop. Target 30 ms p50 / 80 ms p95 (latency budget) |
 
 ### CI runner (GitHub Actions `ubuntu-latest`)
 

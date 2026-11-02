@@ -35,3 +35,16 @@ export async function postChat(body, onEvent, { fetchFn = fetch, signal } = {}) 
     parser.feed(value);
   }
 }
+
+// getSuggested lists the suggestion chips for this visitor. Chips are
+// optional, so any failure gives none rather than an error.
+export async function getSuggested({ fetchFn = fetch } = {}) {
+  try {
+    const resp = await fetchFn("/suggested");
+    if (!resp.ok) return [];
+    const list = await resp.json();
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
+}

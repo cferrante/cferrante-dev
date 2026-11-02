@@ -4,7 +4,8 @@
 //
 // Model output is only ever set with textContent, never as HTML, so text a
 // prompt injection makes the model write can't become markup or script.
-import { postChat } from "./client.js";
+import { getSuggested, postChat } from "./client.js";
+import { linkify, sources } from "./cite.js";
 import { confirmBody, secondsLeft } from "./confirm.js";
 import { cardDetails, cardTitle, formatDuration } from "./format.js";
 import { initialState, reduce } from "./state.js";
@@ -26,6 +27,9 @@ const els = {
   noCards: $("no-cards"),
   cardTemplate: $("card-template"),
   proposals: $("proposals"),
+  chips: $("chips"),
+  sources: $("sources"),
+  sourcesBlock: $("sources-block"),
   proposalTemplate: $("proposal-template"),
 };
 
@@ -71,7 +75,7 @@ function render() {
   while (nodes.length > state.thoughts.length) nodes[nodes.length - 1].remove();
 
   els.asked.textContent = state.question ? `You: ${state.question}` : "";
-  els.answer.textContent = state.answer;
+  renderAnswer();
   els.status.dataset.state = state.status;
   els.status.textContent = state.status === "streaming"
     ? "Thinking…"
@@ -84,6 +88,40 @@ function render() {
   renderCards();
   renderProposals();
   els.thoughts.scrollTop = els.thoughts.scrollHeight;
+}
+
+// The answer with its citation links: built from text nodes and <a> elements
+// (href only from cite.js's safe-URL check), never from HTML. Rebuilt only
+// when the text or its citations change.
+let renderedAnswer = "";
+function renderAnswer() {
+  const key = state.answer + "\u0000" + state.citations.length;
+  if (key === renderedAnswer) return;
+  renderedAnswer = key;
+  els.answer.replaceChildren(
+    ...linkify(state.answer, state.citations).map((seg) => {
+      if (seg.href === undefined) return document.createTextNode(seg.text);
+      return link(seg.text, seg.href, seg.title);
+    }),
+  );
+  const list = sources(state.citations);
+  els.sourcesBlock.hidden = list.length === 0;
+  els.sources.replaceChildren(...list.map((src) => {
+    const li = document.createElement("li");
+    li.append(`[${src.n}] `, src.href ? link(src.title, src.href, src.title) : src.title);
+    return li;
+  }));
+}
+
+function link(text, href, title) {
+  const a = document.createElement("a");
+  a.textContent = text;
+  a.href = href;
+  a.title = title || "";
+  a.target = "_blank"; // keep the conversation open
+  a.rel = "noopener noreferrer";
+  a.className = "text-term-accent underline hover:no-underline";
+  return a;
 }
 
 function renderCards() {
@@ -215,6 +253,24 @@ els.form.addEventListener("submit", (e) => {
 });
 
 els.retry.addEventListener("click", () => lastRequest && send(...lastRequest));
+// Suggestion chips: each sends its id, and the server streams the stored
+// answer with no model call.
+getSuggested().then((list) => {
+  els.chips.replaceChildren(...list.map((s) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = s.question;
+    b.className =
+      "rounded-full border border-term-line px-3 py-1 text-xs text-term-fg hover:border-term-accent focus-visible:outline-2 focus-visible:outline-term-accent";
+    b.addEventListener("click", () =>
+      send("ask", { message: s.question, now_ms: Date.now() }, () => ({
+        conversation_id: state.conversationId,
+        suggested_id: s.id,
+      })));
+    return b;
+  }));
+});
+
 // One listener for every Confirm card's buttons.
 els.proposals.addEventListener("click", (e) => {
   const button = e.target.closest("button[data-role]");

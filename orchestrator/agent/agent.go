@@ -35,6 +35,21 @@ type Retriever interface {
 	Retrieve(ctx context.Context, query string, mask uint32, k int) ([]Chunk, error)
 }
 
+// Suggestion is a suggested question with its stored, pre-checked answer
+// (design §14). Chunks are the answer's citations: [n] refers to Chunks[n-1].
+type Suggestion struct {
+	ID, Question, Answer string
+	Chunks               []Chunk
+	InviteeOnly          bool
+}
+
+// Suggestions holds the suggested questions; both methods see only what the
+// caller may.
+type Suggestions interface {
+	List(caller auth.Caller) []Suggestion
+	Find(id string, caller auth.Caller) (Suggestion, bool)
+}
+
 // TurnRequest is the visitor's message.
 type TurnRequest struct {
 	ConversationID string // "" or unknown: a new conversation is started
@@ -42,6 +57,9 @@ type TurnRequest struct {
 	// ConfirmActionID, when set, confirms a proposed action instead of
 	// asking a question (design §6).
 	ConfirmActionID string
+	// SuggestedID, when set, answers a suggested question from storage, with
+	// no model call.
+	SuggestedID string
 }
 
 // MaxToolRounds bounds how many times one turn may call tools (design §3).
@@ -59,9 +77,11 @@ type Agent struct {
 	Log io.Writer
 	// AssistantName is what the model is told it is; default "Context Concierge".
 	AssistantName string
-	Tools         tools.Registry       // nil: no tools offered
-	Pending       tools.PendingActions // required when Tools has side effects
-	NewID         func() string        // conversation ids; default 128 random bits
+	Tools         tools.Registry // nil: no tools offered
+	// Suggestions answers suggested questions from storage; nil: none.
+	Suggestions Suggestions
+	Pending     tools.PendingActions // required when Tools has side effects
+	NewID       func() string        // conversation ids; default 128 random bits
 }
 
 var errDeadline = errors.New("agent: turn deadline exceeded")
@@ -111,6 +131,9 @@ func (a *Agent) Turn(ctx context.Context, caller auth.Caller, req TurnRequest, w
 	}
 	if req.ConfirmActionID != "" {
 		return a.confirm(ctx, caller, req.ConfirmActionID, convID, w)
+	}
+	if req.SuggestedID != "" {
+		return a.suggested(ctx, caller, req.SuggestedID, convID, w)
 	}
 	tl := &turnLog{conv: convID, outcome: "error"}
 	defer a.writeLog(tl)
@@ -397,3 +420,40 @@ func (a *Agent) confirm(ctx context.Context, caller auth.Caller, actionID, convI
 }
 
 func (a *Agent) newActionID() string { return "a_" + strings.TrimPrefix(a.newID(), "c_") }
+
+// suggested streams a stored, pre-checked answer: no retrieval and no model
+// call, so it appears at once (design §14). A suggestion the caller may not
+// see is answered exactly like a missing one.
+func (a *Agent) suggested(ctx context.Context, caller auth.Caller, id, convID string, w *sse.Writer) error {
+	if err := w.StepStart("cache", "cache", "Stored answer"); err != nil {
+		return err
+	}
+	var sug Suggestion
+	ok := false
+	if a.Suggestions != nil {
+		sug, ok = a.Suggestions.Find(id, caller)
+	}
+	if !ok {
+		_ = w.StepEnd("cache", "error", map[string]any{"hit": false})
+		return w.Error("suggestion_not_found", "that suggested question isn't available", false)
+	}
+	if err := w.StepEnd("cache", "ok", map[string]any{"hit": true}); err != nil {
+		return err
+	}
+	if err := w.Token(sug.Answer); err != nil {
+		return err
+	}
+	cites := newCiter(len(sug.Chunks))
+	for _, n := range cites.feed(sug.Answer) {
+		c := sug.Chunks[n-1]
+		if err := w.Citation(sse.Citation{N: n, ChunkID: c.ID, Title: c.Title, URL: c.URL}); err != nil {
+			return err
+		}
+	}
+	if err := a.Store.Append(ctx, convID, caller.ID,
+		model.Message{Role: model.User, Content: sug.Question},
+		model.Message{Role: model.Assistant, Content: sug.Answer}); err != nil {
+		return w.Error("internal", "couldn't save the conversation", true)
+	}
+	return w.Done(convID)
+}

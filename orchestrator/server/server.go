@@ -56,8 +56,14 @@ func (h *Chat) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	msg := strings.TrimSpace(req.Message)
-	confirm := ""
+	confirm, suggested := "", ""
 	switch {
+	case req.SuggestedID != nil:
+		// A suggested question needs no message: its answer is stored (design §14).
+		if suggested = strings.TrimSpace(*req.SuggestedID); suggested == "" {
+			httpError(w, http.StatusBadRequest, "suggested_id is empty")
+			return
+		}
 	case req.Confirm != nil:
 		// A confirmation needs no message: it runs the proposed action (design §6).
 		if confirm = strings.TrimSpace(req.Confirm.ActionID); confirm == "" {
@@ -90,7 +96,7 @@ func (h *Chat) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer stream.Close()
 	// r.Context() ends when the client disconnects, which cancels the turn.
 	_ = h.Agent.Turn(r.Context(), caller, agent.TurnRequest{
-		ConversationID: req.ConversationID, Message: msg, ConfirmActionID: confirm,
+		ConversationID: req.ConversationID, Message: msg, ConfirmActionID: confirm, SuggestedID: suggested,
 	}, stream)
 }
 

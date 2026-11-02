@@ -23,3 +23,7 @@ data-[state=streaming]:animate-pulse
 data-[status=done]:border-term-accent
 data-[status=expired]:border-term-line
 data-[status=failed]:border-term-error
+underline
+hover:no-underline
+rounded-full
+empty:hidden

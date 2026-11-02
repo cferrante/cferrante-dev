@@ -74,3 +74,13 @@ Deno.test("multi-byte characters split across chunks decode correctly", async ()
   await postChat({ message: "x" }, (n, d) => got.push([n, d]), { fetchFn: fn });
   assertEquals(got, [["token", { text: "é" }]]);
 });
+
+Deno.test("getSuggested lists the chips, and an error gives none", async () => {
+  const { getSuggested } = await import("./client.js");
+  const ok = () => Promise.resolve(new Response('[{"id":"a","question":"Q?"}]'));
+  assertEquals(await getSuggested({ fetchFn: ok }), [{ id: "a", question: "Q?" }]);
+  const down = () => Promise.reject(new TypeError("Failed to fetch"));
+  assertEquals(await getSuggested({ fetchFn: down }), []);
+  const bad = () => Promise.resolve(new Response("nope", { status: 500 }));
+  assertEquals(await getSuggested({ fetchFn: bad }), []);
+});

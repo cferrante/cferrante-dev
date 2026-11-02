@@ -32,7 +32,7 @@ func TestDefaultsAreLocalOnly(t *testing.T) {
 }
 
 func TestSetupServesChatOverTheIndexedFixture(t *testing.T) {
-	c, _ := parse([]string{"-embedder", "hash", "-corpus", "../../corpus/testdata/corpus",
+	c, _ := parse([]string{"-embedder", "hash", "-corpus", "../../corpus/testdata/corpus", "-suggested", "../../corpus/testdata/suggested.json",
 		"-index", filepath.Join(t.TempDir(), "dev.idx")}, noEnv)
 	m := &fake.Model{Name: "ollama", Events: []model.Event{{Kind: model.Text, Text: "Alpha is Go [1]."}}}
 	var log bytes.Buffer
@@ -81,7 +81,7 @@ var allEnv = map[string]string{
 	"OLLAMA_BASE_URL": "http://gpu-box:11434", "EMBEDDER": "hash", "EMBED_MODEL": "mxbai-embed-large",
 	"EMBED_DIM": "1024", "CHAT_MODEL": "llama3.1", "REASONING_EFFORT": "medium", "DEV_INVITEE": "true",
 	"CONTACT_OPTIONS": "Use the form.", "AVAILABILITY": "Tue–Thu", "TURN_DEADLINE": "90s",
-	"WEB_DIR": "/site", "ASSISTANT_NAME": "Concierge",
+	"WEB_DIR": "/site", "ASSISTANT_NAME": "Concierge", "SUGGESTED_FILE": "/s.json",
 }
 
 func TestEnvironmentSetsEveryOption(t *testing.T) {
@@ -91,7 +91,7 @@ func TestEnvironmentSetsEveryOption(t *testing.T) {
 	}
 	want := config{addr: "127.0.0.1:9999", corpusDir: "/c", index: "/i.idx", ollamaURL: "http://gpu-box:11434",
 		embedder: "hash", embedModel: "mxbai-embed-large", embedDim: 1024, model: "llama3.1", effort: "medium", invitee: true,
-		contact: "Use the form.", availability: "Tue–Thu", deadline: 90 * time.Second, webDir: "/site", assistant: "Concierge"}
+		contact: "Use the form.", availability: "Tue–Thu", deadline: 90 * time.Second, webDir: "/site", assistant: "Concierge", suggestedFile: "/s.json"}
 	if c != want {
 		t.Errorf("config\n got %+v\nwant %+v", c, want)
 	}
@@ -136,7 +136,7 @@ func TestOllamaSettingsReachTheEmbedder(t *testing.T) {
 		json.NewEncoder(w).Encode(map[string]any{"embeddings": vecs})
 	}))
 	defer ollama.Close()
-	c, err := parse([]string{"-corpus", "../../corpus/testdata/corpus", "-index", filepath.Join(t.TempDir(), "dev.idx")},
+	c, err := parse([]string{"-corpus", "../../corpus/testdata/corpus", "-suggested", "../../corpus/testdata/suggested.json", "-index", filepath.Join(t.TempDir(), "dev.idx")},
 		envOf(map[string]string{"OLLAMA_BASE_URL": ollama.URL, "EMBED_MODEL": "tiny-embed", "EMBED_DIM": "4"}))
 	if err != nil {
 		t.Fatal(err)
@@ -153,7 +153,7 @@ func TestOllamaSettingsReachTheEmbedder(t *testing.T) {
 }
 
 func TestDevOffersToolsAndLogsConfirmedActions(t *testing.T) {
-	c, _ := parse([]string{"-embedder", "hash", "-corpus", "../../corpus/testdata/corpus", "-invitee",
+	c, _ := parse([]string{"-embedder", "hash", "-corpus", "../../corpus/testdata/corpus", "-suggested", "../../corpus/testdata/suggested.json", "-invitee",
 		"-index", filepath.Join(t.TempDir(), "dev.idx")}, envOf(map[string]string{"AVAILABILITY": "Tue–Thu"}))
 	m := &fake.Model{Name: "ollama", Turns: [][]model.Event{
 		{{Kind: model.ToolCallEvent, ToolCall: &model.ToolCall{ID: "c1", Name: "send_message", Arguments: []byte(`{"message":"hello"}`)}}},
@@ -208,7 +208,7 @@ func TestEffortNoneOmitsReasoningEffort(t *testing.T) {
 func TestDevServesThePageWithItsCSP(t *testing.T) {
 	web := t.TempDir()
 	os.WriteFile(filepath.Join(web, "index.html"), []byte("<title>receptionist</title>"), 0o644)
-	c, _ := parse([]string{"-embedder", "hash", "-corpus", "../../corpus/testdata/corpus",
+	c, _ := parse([]string{"-embedder", "hash", "-corpus", "../../corpus/testdata/corpus", "-suggested", "../../corpus/testdata/suggested.json",
 		"-index", filepath.Join(t.TempDir(), "dev.idx")}, envOf(map[string]string{"WEB_DIR": web}))
 	h, cleanup, err := setup(context.Background(), c, &fake.Model{}, &bytes.Buffer{})
 	if err != nil {
@@ -227,5 +227,50 @@ func TestDevServesThePageWithItsCSP(t *testing.T) {
 	if resp.StatusCode != 200 || !strings.Contains(b.String(), "receptionist") ||
 		!strings.Contains(resp.Header.Get("Content-Security-Policy"), "script-src 'self'") {
 		t.Errorf("GET / = %d, CSP %q, body %q", resp.StatusCode, resp.Header.Get("Content-Security-Policy"), b.String())
+	}
+}
+
+func TestDevServesSuggestedQuestionsFromTheFile(t *testing.T) {
+	c, _ := parse([]string{"-embedder", "hash", "-corpus", "../../corpus/testdata/corpus",
+		"-index", filepath.Join(t.TempDir(), "dev.idx")},
+		envOf(map[string]string{"SUGGESTED_FILE": "../../corpus/testdata/suggested.json"}))
+	m := &fake.Model{Name: "ollama"}
+	h, cleanup, err := setup(context.Background(), c, m, &bytes.Buffer{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+	resp, err := http.Get(srv.URL + "/suggested")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var list []map[string]string
+	json.NewDecoder(resp.Body).Decode(&list)
+	resp.Body.Close()
+	if len(list) != 2 || list[0]["id"] != "alpha-search" {
+		t.Fatalf("visitor list = %v", list)
+	}
+	resp, err = http.Post(srv.URL+"/chat", "application/json", strings.NewReader(`{"suggested_id":"alpha-search"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body bytes.Buffer
+	body.ReadFrom(resp.Body)
+	resp.Body.Close()
+	if !strings.Contains(body.String(), "fuses keyword and vector search") || !strings.Contains(body.String(), "event: citation") ||
+		len(m.Requests()) != 0 {
+		t.Errorf("model calls %d, stream:\n%s", len(m.Requests()), body.String())
+	}
+}
+
+func TestDevRefusesABadSuggestionsFile(t *testing.T) {
+	bad := filepath.Join(t.TempDir(), "s.json")
+	os.WriteFile(bad, []byte(`[{"id":"x","question":"q","answer":"a [1]","citations":["private-notes#rates"],"access":"public"}]`), 0o600)
+	c, _ := parse([]string{"-embedder", "hash", "-corpus", "../../corpus/testdata/corpus",
+		"-index", filepath.Join(t.TempDir(), "dev.idx")}, envOf(map[string]string{"SUGGESTED_FILE": bad}))
+	if _, _, err := setup(context.Background(), c, &fake.Model{}, &bytes.Buffer{}); err == nil || !strings.Contains(err.Error(), "invitee-only") {
+		t.Errorf("err = %v, want the leak refused", err)
 	}
 }

@@ -152,3 +152,14 @@ Deno.test("the site config travels in the state and shapes error wording", () =>
   s = reduce(reduce(s, "ask", { message: "q" }), "error", { code: "timeout" });
   assertEquals(s.error.message, "Concierge gave up.");
 });
+
+Deno.test("citations are collected once each and cleared by a new question", () => {
+  let s = run([
+    ["citation", { n: 2, chunk_id: "b", title: "B", url: "/b" }],
+    ["citation", { n: 1, chunk_id: "a", title: "A", url: "/a" }],
+    ["citation", { n: 2, chunk_id: "b", title: "B", url: "/b" }],
+  ]);
+  assertEquals(s.citations.map((c) => c.n), [2, 1]);
+  s = reduce(s, "ask", { message: "next" });
+  assertEquals(s.citations, []);
+});

@@ -1,0 +1,23 @@
+[
+  {
+    "id": "alpha-search",
+    "question": "How does Alpha search?",
+    "answer": "Alpha's search runs in a C++ engine that fuses keyword and vector search [1].",
+    "citations": ["proj-alpha#how-it-works"],
+    "access": "public"
+  },
+  {
+    "id": "alpha-what",
+    "question": "What is Project Alpha?",
+    "answer": "Project Alpha is a small Go service [1] that answers questions about a portfolio and streams its answers [2].",
+    "citations": ["proj-alpha#intro", "proj-alpha#summary"],
+    "access": "public"
+  },
+  {
+    "id": "rates",
+    "question": "What are the consulting rates?",
+    "answer": "The consulting rate is negotiable for nonprofits [1].",
+    "citations": ["private-notes#rates"],
+    "access": "invitee"
+  }
+]

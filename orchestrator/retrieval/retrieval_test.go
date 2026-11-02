@@ -189,3 +189,18 @@ func TestIndexTextIncludesTitleAndHeading(t *testing.T) {
 		t.Errorf("indexText without heading = %q", got)
 	}
 }
+
+func TestChunkLookupByID(t *testing.T) {
+	r, err := Load(build(t), hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	c, access, ok := r.Chunk("private-notes#rates")
+	if !ok || access != "invitee" || c.Title != "Private notes" || c.URL != "/notes#rates" || c.Text == "" {
+		t.Errorf("Chunk = %+v, %q, %v", c, access, ok)
+	}
+	if _, _, ok := r.Chunk("nope#x"); ok {
+		t.Error("found a missing chunk")
+	}
+}
