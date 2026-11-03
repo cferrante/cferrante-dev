@@ -4,6 +4,7 @@ import (
 	"context"
 	"math"
 	"os"
+	"slices"
 	"testing"
 	"time"
 
@@ -26,7 +27,7 @@ func dot(a, b []float32) float64 {
 	return s
 }
 
-// TestLiveTitan calls the real Titan v2 once per text (plan step 5.3). Opt-in:
+// TestLiveTitan calls the real Titan v2 13 times (plan step 5.3). Opt-in:
 // it costs a tiny fraction of a cent and needs an AWS session, so `make test`
 // and CI skip it. Run it with `make smoke-titan` after `aws sso login`.
 func TestLiveTitan(t *testing.T) {
@@ -65,7 +66,19 @@ func TestLiveTitan(t *testing.T) {
 	if related <= unrelated {
 		t.Errorf("search~retrieval %.3f should beat search~recipe %.3f", related, unrelated)
 	}
-	t.Logf("titan %s: %d texts in %v (%v per call), %d tokens; similarity related %.3f, unrelated %.3f",
-		e.Model(), len(texts), elapsed.Round(time.Millisecond), (elapsed / time.Duration(len(texts))).Round(time.Millisecond),
-		e.Tokens(), related, unrelated)
+	t.Logf("titan %s: %d texts in %v (first calls, including connection setup), %d tokens; similarity related %.3f, unrelated %.3f",
+		e.Model(), len(texts), elapsed.Round(time.Millisecond), e.Tokens(), related, unrelated)
+
+	// A visitor's question is one warm call: measure that, as the agent sees it.
+	var times []time.Duration
+	for range 10 {
+		start := time.Now()
+		if _, err := e.Embed(ctx, []string{"What did you build with Go?"}); err != nil {
+			t.Fatal(err)
+		}
+		times = append(times, time.Since(start))
+	}
+	slices.Sort(times)
+	t.Logf("warm query embedding, 10 calls: min %v, median %v, max %v",
+		times[0].Round(time.Millisecond), times[len(times)/2].Round(time.Millisecond), times[len(times)-1].Round(time.Millisecond))
 }

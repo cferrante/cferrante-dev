@@ -3,6 +3,7 @@
 //
 //	make dev                      # Ollama: qwen3:4b + nomic-embed-text
 //	make dev DEV_FLAGS=-invitee   # as an invitee, so private chunks appear
+//	make dev DEV_FLAGS="-provider=groq -embedder=titan"  # the production models
 //
 // Every option is also an environment variable, read from the shell or a
 // git-ignored .env file (see .env.example); a flag overrides both.
@@ -18,10 +19,10 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"syscall"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
@@ -29,8 +30,8 @@ import (
 	"github.com/cferrante/cferrante-dev/orchestrator/auth"
 	"github.com/cferrante/cferrante-dev/orchestrator/clock"
 	cfg "github.com/cferrante/cferrante-dev/orchestrator/config"
-	"github.com/cferrante/cferrante-dev/orchestrator/corpus"
 	"github.com/cferrante/cferrante-dev/orchestrator/embed"
+	"github.com/cferrante/cferrante-dev/orchestrator/indexing"
 	"github.com/cferrante/cferrante-dev/orchestrator/model"
 	"github.com/cferrante/cferrante-dev/orchestrator/model/bedrock"
 	"github.com/cferrante/cferrante-dev/orchestrator/model/oai"
@@ -42,18 +43,17 @@ import (
 )
 
 type config struct {
-	addr, corpusDir, index, ollamaURL   string
-	embedder, embedModel, model, effort string
-	embedDim                            int // 0: the embedder's own default
-	invitee                             bool
-	contact, availability               string        // tools' static answers
-	deadline                            time.Duration // whole-turn limit
-	webDir                              string        // the page (design §14)
-	assistant                           string        // the assistant's name, in the system prompt
-	suggestedFile                       string        // stored answers for the suggestion chips (design §14)
-	provider, groqModel, groqKeyParam   string        // CHAT_PROVIDER: ollama | groq
-	awsProfile, awsRegion               string        // for SSM and Bedrock
-	bedrockModel                        string        // the fallback when CHAT_PROVIDER=groq
+	addr, model, effort               string
+	idx                               indexing.Settings // corpus, index and embedder, shared with the indexer
+	invitee                           bool
+	contact, availability             string        // tools' static answers
+	deadline                          time.Duration // whole-turn limit
+	webDir                            string        // the page (design §14)
+	assistant                         string        // the assistant's name, in the system prompt
+	suggestedFile                     string        // stored answers for the suggestion chips (design §14)
+	provider, groqModel, groqKeyParam string        // CHAT_PROVIDER: ollama | groq
+	awsProfile, awsRegion             string        // for SSM and Bedrock
+	bedrockModel                      string        // the fallback when CHAT_PROVIDER=groq
 }
 
 // parse reads the configuration. Every option has an environment variable
@@ -63,12 +63,7 @@ func parse(args []string, getenv cfg.Getenv) (config, error) {
 	fs := flag.NewFlagSet("dev", flag.ContinueOnError)
 	var c config
 	fs.StringVar(&c.addr, "addr", env.String("LISTEN_ADDR", "127.0.0.1:8787"), "listen address, localhost only by default [LISTEN_ADDR]")
-	fs.StringVar(&c.corpusDir, "corpus", env.String("CORPUS_DIR", "orchestrator/corpus/testdata/corpus"), "corpus directory [CORPUS_DIR]")
-	fs.StringVar(&c.index, "index", env.String("INDEX_PATH", "build/dev/corpus.idx"), "where to build the index [INDEX_PATH]")
-	fs.StringVar(&c.ollamaURL, "ollama", env.String("OLLAMA_BASE_URL", embed.OllamaBaseURL), "Ollama's base URL [OLLAMA_BASE_URL]")
-	fs.StringVar(&c.embedder, "embedder", env.String("EMBEDDER", "ollama"), "ollama, or hash (no Ollama needed) [EMBEDDER]")
-	fs.StringVar(&c.embedModel, "embed-model", env.String("EMBED_MODEL", "nomic-embed-text"), "Ollama embedding model [EMBED_MODEL]")
-	fs.IntVar(&c.embedDim, "embed-dim", env.Int("EMBED_DIM", 0), "embedding size; 0 = 768 for ollama, 256 for hash [EMBED_DIM]")
+	idx := indexing.Flags(fs, env)
 	fs.StringVar(&c.model, "model", env.String("CHAT_MODEL", "qwen3:4b"), "Ollama chat model [CHAT_MODEL]")
 	fs.StringVar(&c.effort, "effort", env.String("REASONING_EFFORT", ""), "reasoning effort; unset = low for Ollama (qwen3 on a CPU), the provider's default for Groq; none omits it [REASONING_EFFORT]")
 	fs.StringVar(&c.provider, "provider", env.String("CHAT_PROVIDER", "ollama"), "ollama or groq [CHAT_PROVIDER]")
@@ -90,6 +85,7 @@ func parse(args []string, getenv cfg.Getenv) (config, error) {
 	if err := fs.Parse(args); err != nil {
 		return c, err
 	}
+	c.idx = *idx
 	switch c.provider {
 	case "ollama", "groq":
 	default:
@@ -106,45 +102,32 @@ func parse(args []string, getenv cfg.Getenv) (config, error) {
 	return c, nil
 }
 
-func embedderFor(c config) (embed.Embedder, error) {
-	switch c.embedder {
-	case "ollama":
-		return embed.Ollama{BaseURL: c.ollamaURL, Name: c.embedModel, D: dimOr(c.embedDim, 768)}, nil
-	case "hash":
-		return embed.Hash{D: dimOr(c.embedDim, 256)}, nil
-	}
-	return nil, fmt.Errorf("unknown embedder %q", c.embedder)
-}
-
-func dimOr(d, def int) int {
-	if d > 0 {
-		return d
-	}
-	return def
-}
-
 // setup builds the index and returns the HTTP handler and a cleanup func.
-func setup(ctx context.Context, c config, m model.Model, logw io.Writer) (http.Handler, func(), error) {
-	e, err := embedderFor(c)
+// newTitan creates the Bedrock client, only when EMBEDDER=titan.
+func setup(ctx context.Context, c config, m model.Model, logw io.Writer, newTitan func() (embed.Invoker, error)) (http.Handler, func(), error) {
+	e, err := c.idx.NewEmbedder(newTitan)
 	if err != nil {
 		return nil, nil, err
 	}
-	chunks, err := corpus.Chunker{Target: 1000}.ReadDir(c.corpusDir)
+	st, err := c.idx.Build(ctx, e)
+	if err != nil {
+		switch c.idx.Embedder {
+		case "ollama":
+			err = fmt.Errorf("building the index (is Ollama running?): %w", err)
+		case "titan":
+			err = fmt.Errorf("building the index: %w (if your AWS session has expired: aws sso login --profile %s)", err, c.awsProfile)
+		}
+		return nil, nil, err
+	}
+	r, err := retrieval.Load(c.idx.IndexPath, e)
 	if err != nil {
 		return nil, nil, err
 	}
-	if err := os.MkdirAll(filepath.Dir(c.index), 0o755); err != nil {
-		return nil, nil, err
+	tokens := ""
+	if st.Tokens > 0 {
+		tokens = fmt.Sprintf(", %d Titan tokens", st.Tokens)
 	}
-	start := time.Now()
-	if err := retrieval.Build(ctx, chunks, e, c.index); err != nil {
-		return nil, nil, fmt.Errorf("building the index (is Ollama running?): %w", err)
-	}
-	r, err := retrieval.Load(c.index, e)
-	if err != nil {
-		return nil, nil, err
-	}
-	fmt.Fprintf(logw, "indexed %d chunks from %s with %s in %v\n", len(chunks), c.corpusDir, e.Model(), time.Since(start).Round(time.Millisecond))
+	fmt.Fprintf(logw, "indexed %d chunks from %s with %s in %v%s\n", st.Chunks, c.idx.CorpusDirs, e.Model(), st.Elapsed.Round(time.Millisecond), tokens)
 
 	// Suggested questions are checked against the index at startup: a bad
 	// file stops the server rather than serving a broken answer instantly.
@@ -191,7 +174,13 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	h, cleanup, err := setup(ctx, c, m, os.Stdout)
+	h, cleanup, err := setup(ctx, c, m, os.Stdout, func() (embed.Invoker, error) {
+		awsCfg, err := loadAWS(ctx, c)
+		if err != nil {
+			return nil, err
+		}
+		return bedrockruntime.NewFromConfig(awsCfg), nil
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -204,7 +193,7 @@ func main() {
 		srv.Shutdown(shutdown)
 	}()
 	fmt.Printf("open http://%s/ in a browser to talk to the %s\n", c.addr, c.assistant)
-	where := fmt.Sprintf("model %s via Ollama at %s", c.model, c.ollamaURL)
+	where := fmt.Sprintf("model %s via Ollama at %s", c.model, c.idx.OllamaURL)
 	if c.provider == "groq" {
 		where = fmt.Sprintf("model %s via Groq, falling back to %s on Bedrock", c.groqModel, c.bedrockModel)
 	}
@@ -223,7 +212,7 @@ func main() {
 // SSM (stubbed in tests).
 func chatModel(ctx context.Context, c config, secret func(context.Context, string) (string, error), br bedrock.Streamer) (model.Model, error) {
 	if c.provider != "groq" {
-		return &oai.Client{Provider: "ollama", BaseURL: c.ollamaURL + "/v1", Model: c.model, ReasoningEffort: c.effort}, nil
+		return &oai.Client{Provider: "ollama", BaseURL: c.idx.OllamaURL + "/v1", Model: c.model, ReasoningEffort: c.effort}, nil
 	}
 	key, err := secret(ctx, c.groqKeyParam)
 	if err != nil {
@@ -231,8 +220,7 @@ func chatModel(ctx context.Context, c config, secret func(context.Context, strin
 	}
 	groq := &oai.Client{Provider: "groq", BaseURL: oai.GroqBaseURL, APIKey: key, Model: c.groqModel, ReasoningEffort: c.effort}
 	if br == nil {
-		awsCfg, err := awsconfig.LoadDefaultConfig(ctx,
-			awsconfig.WithSharedConfigProfile(c.awsProfile), awsconfig.WithRegion(c.awsRegion))
+		awsCfg, err := loadAWS(ctx, c)
 		if err != nil {
 			return nil, err
 		}
@@ -248,8 +236,7 @@ func ssmSecret(c config) func(context.Context, string) (string, error) {
 	var store *secrets.SSM
 	return func(ctx context.Context, name string) (string, error) {
 		if store == nil {
-			awsCfg, err := awsconfig.LoadDefaultConfig(ctx,
-				awsconfig.WithSharedConfigProfile(c.awsProfile), awsconfig.WithRegion(c.awsRegion))
+			awsCfg, err := loadAWS(ctx, c)
 			if err != nil {
 				return "", err
 			}
@@ -257,4 +244,9 @@ func ssmSecret(c config) func(context.Context, string) (string, error) {
 		}
 		return store.Get(ctx, name)
 	}
+}
+
+// loadAWS reads the AWS profile's configuration, for SSM and Bedrock.
+func loadAWS(ctx context.Context, c config) (aws.Config, error) {
+	return awsconfig.LoadDefaultConfig(ctx, awsconfig.WithSharedConfigProfile(c.awsProfile), awsconfig.WithRegion(c.awsRegion))
 }
