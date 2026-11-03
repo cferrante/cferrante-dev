@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime"
+	cfg "github.com/cferrante/cferrante-dev/orchestrator/config"
 	"github.com/cferrante/cferrante-dev/orchestrator/embed"
 	"github.com/cferrante/cferrante-dev/orchestrator/indexing"
 	"github.com/cferrante/cferrante-dev/orchestrator/model"
@@ -453,4 +454,59 @@ func TestACorpusErrorDoesNotBlameTheEmbedder(t *testing.T) {
 			t.Errorf("%s: err = %v, want the missing folder without an Ollama or AWS hint", embedder, err)
 		}
 	}
+}
+
+// An empty variable means "use the default" (design §11), so turning the
+// suggestions off needs a word: SUGGESTED_FILE=none, like REASONING_EFFORT=none.
+// Found in your click-through: SUGGESTED_FILE= in .env still loaded the
+// fixture's file, which refuses to start against the real corpus.
+func TestSuggestedFileNoneTurnsSuggestionsOff(t *testing.T) {
+	for name, tc := range map[string]struct {
+		args []string
+		env  map[string]string
+	}{
+		"environment": {nil, map[string]string{"SUGGESTED_FILE": "none"}},
+		"flag":        {[]string{"-suggested", "none"}, nil},
+		"empty flag":  {[]string{"-suggested", ""}, nil},
+	} {
+		c, err := parse(tc.args, envOf(tc.env))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if c.suggestedFile != "" {
+			t.Errorf("%s: suggestedFile = %q, want none", name, c.suggestedFile)
+		}
+	}
+	// An empty value in the environment still means the default.
+	if c, _ := parse(nil, envOf(map[string]string{"SUGGESTED_FILE": ""})); c.suggestedFile == "" {
+		t.Error("empty SUGGESTED_FILE: want the default file")
+	}
+}
+
+// End to end through a real .env file, the way the click-through ran it.
+func TestSuggestedFileNoneInDotEnvStartsWithoutTheFixtureFile(t *testing.T) {
+	dir := t.TempDir()
+	corpusDir := filepath.Join(dir, "corpus")
+	os.MkdirAll(corpusDir, 0o755)
+	doc := "---\ntitle: Rates\nurl: /rates\naccess: invitee\n---\n## Rates\n\nText.\n"
+	if err := os.WriteFile(filepath.Join(corpusDir, "rates.md"), []byte(doc), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	dotenv := filepath.Join(dir, ".env")
+	if err := os.WriteFile(dotenv, []byte("SUGGESTED_FILE=none\nEMBEDDER=hash\nCORPUS_DIRS="+corpusDir+"\nINDEX_PATH="+filepath.Join(dir, "d.idx")+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	getenv, err := cfg.WithDotEnv(dotenv, noEnv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := parse(nil, getenv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, cleanup, err := setup(context.Background(), c, &fake.Model{}, &bytes.Buffer{}, nil)
+	if err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	cleanup()
 }
