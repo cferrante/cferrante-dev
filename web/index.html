@@ -26,15 +26,18 @@
           <ol id="sources" class="space-y-0.5"></ol>
         </div>
         <div class="flex items-center gap-3">
-          <p id="status" role="status" class="text-term-dim data-[state=error]:text-term-error data-[state=streaming]:animate-pulse motion-reduce:animate-none"></p>
-          <button id="stop" type="button" hidden aria-keyshortcuts="Escape"
-                  class="rounded border border-term-line px-2 py-1 text-term-fg hover:bg-term-panel focus-visible:outline-2 focus-visible:outline-term-accent">
-            Stop
-          </button>
-          <button id="retry" type="button" hidden
-                  class="rounded border border-term-line px-2 py-1 text-term-fg hover:bg-term-panel focus-visible:outline-2 focus-visible:outline-term-accent">
-            Retry
-          </button>
+          <p id="status" role="status" class="flex-1 text-term-dim data-[state=error]:text-term-error data-[state=streaming]:animate-pulse motion-reduce:animate-none"></p>
+          <!-- Shaped like Ask and kept at the right edge, where Ask is. -->
+          <div class="ml-auto flex shrink-0 gap-2">
+            <button id="stop" type="button" hidden aria-keyshortcuts="Escape"
+                    class="rounded border border-term-warn px-3 py-2 text-term-warn hover:bg-term-panel focus-visible:outline-2 focus-visible:outline-term-accent">
+              Stop
+            </button>
+            <button id="retry" type="button" hidden
+                    class="rounded border border-term-accent px-3 py-2 text-term-accent hover:bg-term-panel focus-visible:outline-2 focus-visible:outline-term-accent">
+              Retry
+            </button>
+          </div>
         </div>
       </div>
 
