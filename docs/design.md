@@ -64,7 +64,7 @@ data: {"seq":3,"t_ms":12.4,"step_id":"s2","kind":"retrieval","label":"Hybrid sea
 
 event: step_end
 data: {"seq":4,"t_ms":12.9,"step_id":"s2","status":"ok","duration_ms":0.41,
-       "detail":{"hits":4,"top_score":0.82}}
+       "detail":{"hits":4,"sources":2,"top_score":0.82}}
 ```
 
 | Event | Fields (besides `seq`, `t_ms`) |
