@@ -7,7 +7,7 @@ GO_PKGS := $(shell go list ./... 2>/dev/null)
 SH_FILES := $(shell find . -name '*.sh' -not -path './.git/*')
 SHELLCHECK ?= shellcheck
 
-.PHONY: help tools css site css-check jstest test corpus-check engine-test bench-engine bench-engine-scale bench-go dev smoke-groq smoke-bedrock smoke-titan lint fmt docs-check
+.PHONY: help tools css site css-check jstest test corpus-check engine-test bench-engine bench-engine-scale bench-go dev smoke-groq smoke-groq-schema measure-groq-cache smoke-bedrock smoke-titan lint fmt docs-check
 
 ENGINE_BUILD := build/engine
 ENGINE_RELEASE := build/engine-release
@@ -68,7 +68,13 @@ dev: css site ## Serve the page and /chat locally over Ollama; DEV_FLAGS=-invite
 	build/dev/server $(DEV_FLAGS)
 
 smoke-groq: ## Call the real Groq API once (needs aws sso login; spends free-tier quota)
-	LIVE_GROQ=1 go test -count=1 -run TestLiveGroq -v ./orchestrator/model/oai/
+	LIVE_GROQ=1 go test -count=1 -run 'TestLiveGroq$$' -v ./orchestrator/model/oai/
+
+smoke-groq-schema: ## Check Groq's strict JSON output once (needs aws sso login; free tier)
+	LIVE_GROQ=1 go test -count=1 -run TestLiveGroqSchema -v ./orchestrator/model/oai/
+
+measure-groq-cache: ## Repeat a 1,460-token prompt up to 4 times and log Groq's cached tokens (free tier)
+	LIVE_GROQ=1 go test -count=1 -run TestLiveGroqCache -v ./orchestrator/model/oai/
 
 smoke-bedrock: ## Call the real Bedrock API once (needs aws sso login; about $0.0001)
 	LIVE_BEDROCK=1 go test -count=1 -run TestLiveBedrock -v ./orchestrator/model/bedrock/
