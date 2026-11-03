@@ -92,7 +92,7 @@ var allEnv = map[string]string{
 	"CONTACT_OPTIONS": "Use the form.", "AVAILABILITY": "Tue–Thu", "TURN_DEADLINE": "90s",
 	"WEB_DIR": "/site", "ASSISTANT_NAME": "Concierge", "SUGGESTED_FILE": "/s.json",
 	"CHAT_PROVIDER": "groq", "GROQ_MODEL": "openai/gpt-oss-20b", "GROQ_KEY_PARAM": "/k", "AWS_PROFILE": "p", "AWS_REGION": "eu-west-1",
-	"BEDROCK_MODEL": "us.amazon.nova-micro-v1:0", "TITAN_MODEL": "amazon.titan-x", "CHUNK_TARGET": "600",
+	"BEDROCK_MODEL": "us.amazon.nova-micro-v1:0", "TITAN_MODEL": "amazon.titan-x", "CHUNK_TARGET": "600", "MESSAGES_FILE": "/m.json",
 }
 
 func TestEnvironmentSetsEveryOption(t *testing.T) {
@@ -102,7 +102,7 @@ func TestEnvironmentSetsEveryOption(t *testing.T) {
 	}
 	want := config{addr: "127.0.0.1:9999", idx: indexing.Settings{CorpusDirs: "/c:/d", IndexPath: "/i.idx", ChunkTarget: 600,
 		Embedder: "hash", OllamaURL: "http://gpu-box:11434", OllamaModel: "mxbai-embed-large", Dim: 1024, TitanModel: "amazon.titan-x"}, model: "llama3.1", effort: "medium", invitee: true,
-		contact: "Use the form.", availability: "Tue–Thu", deadline: 90 * time.Second, webDir: "/site", assistant: "Concierge", suggestedFile: "/s.json",
+		contact: "Use the form.", availability: "Tue–Thu", deadline: 90 * time.Second, webDir: "/site", assistant: "Concierge", suggestedFile: "/s.json", messagesFile: "/m.json",
 		provider: "groq", groqModel: "openai/gpt-oss-20b", groqKeyParam: "/k", awsProfile: "p", awsRegion: "eu-west-1", bedrockModel: "us.amazon.nova-micro-v1:0"}
 	if c != want {
 		t.Errorf("config\n got %+v\nwant %+v", c, want)
@@ -509,4 +509,41 @@ func TestSuggestedFileNoneInDotEnvStartsWithoutTheFixtureFile(t *testing.T) {
 		t.Fatalf("setup: %v", err)
 	}
 	cleanup()
+}
+
+// MESSAGES_FILE reaches the server too (step 5.3a): the same file the page
+// build reads words the thought stream, and a bad one stops startup.
+func TestMessagesFileWordsTheNarration(t *testing.T) {
+	dir := t.TempDir()
+	good, bad := filepath.Join(dir, "good.json"), filepath.Join(dir, "bad.json")
+	os.WriteFile(good, []byte(`{"retrieval_found": "Looked through {sources} and found {excerpts}: {titles}."}`), 0o600)
+	os.WriteFile(bad, []byte(`{"retrieval_found": "Found {exerpts}."}`), 0o600)
+	args := []string{"-embedder", "hash", "-corpus", "../../corpus/testdata/corpus", "-suggested", "none", "-index", filepath.Join(dir, "dev.idx")}
+
+	c, err := parse(args, envOf(map[string]string{"MESSAGES_FILE": good}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, cleanup, err := setup(context.Background(), c, &fake.Model{Name: "ollama", Events: []model.Event{{Kind: model.Text, Text: "Hi."}}}, &bytes.Buffer{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+	resp, err := http.Post(srv.URL+"/chat", "application/json", strings.NewReader(`{"message":"What is Alpha?"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body bytes.Buffer
+	body.ReadFrom(resp.Body)
+	resp.Body.Close()
+	if !strings.Contains(body.String(), "Looked through ") || strings.Contains(strings.ToLower(body.String()), "passage") {
+		t.Errorf("stream doesn't use the configured narration:\n%s", body.String())
+	}
+
+	c, _ = parse(append(args, "-messages", bad), noEnv)
+	if _, _, err := setup(context.Background(), c, &fake.Model{}, &bytes.Buffer{}, nil); err == nil || !strings.Contains(err.Error(), "{exerpts}") {
+		t.Errorf("bad file: err = %v, want startup stopped naming {exerpts}", err)
+	}
 }

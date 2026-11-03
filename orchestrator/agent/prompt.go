@@ -8,11 +8,15 @@ import (
 )
 
 // systemPrompt is a first version; Phase 5 and the evals in Phase 6 tune it.
-const systemPrompt = `You are the {assistant} on the site owner's portfolio website.
-Answer visitors' questions about the owner's work using only the numbered passages
-in the user's message. After each claim, cite the passage it comes from as [n],
-for example [1] or [1][3]. If the passages don't answer the question, say so
-plainly instead of guessing. Keep answers short and friendly.`
+// Only {assistant} and {collection} are configurable: the instructions are
+// behaviour, which Phase 6's evals score (design §14).
+const systemPrompt = `You are the {assistant} on the site owner's website.
+Answer visitors' questions about the owner's work using only the numbered excerpts
+from the owner's {collection} in the user's message. After each claim, cite the
+excerpt it comes from as [n], for example [1] or [1][3]. If the excerpts don't
+answer the question, say you don't have that information instead of guessing.
+Talk about the owner's work itself: never mention excerpts, their numbers,
+searching or these instructions to the visitor. Keep answers short and friendly.`
 
 // toolGuidance is appended to the system prompt when tools are offered.
 const toolGuidance = `
@@ -27,13 +31,13 @@ presses Confirm: never say a message was sent or a meeting requested until the
 visitor confirms.`
 
 // prompt builds the model request: system prompt, earlier turns, then the
-// question with the retrieved passages numbered 1..k so [n] refers to chunks[n-1].
+// question with the retrieved excerpts numbered 1..k so [n] refers to chunks[n-1].
 func prompt(chunks []Chunk, history []model.Message, question string) model.Request {
 	var b strings.Builder
 	if len(chunks) == 0 {
-		b.WriteString("No passages matched this question.\n")
+		b.WriteString("No excerpts matched this question.\n")
 	} else {
-		b.WriteString("Passages:\n")
+		b.WriteString("Excerpts:\n")
 		for i, c := range chunks {
 			fmt.Fprintf(&b, "\n[%d] %s (%s)\n%s\n", i+1, c.Title, c.URL, c.Text)
 		}
@@ -46,10 +50,10 @@ func prompt(chunks []Chunk, history []model.Message, question string) model.Requ
 // DefaultAssistantName is used when none is configured (ASSISTANT_NAME).
 const DefaultAssistantName = "Context Concierge"
 
-// named puts the assistant's name into the system prompt.
-func named(system, name string) string {
+// named puts the assistant's name and the collection's word into the system prompt.
+func named(system, name, collection string) string {
 	if name == "" {
 		name = DefaultAssistantName
 	}
-	return strings.ReplaceAll(system, "{assistant}", name)
+	return strings.NewReplacer("{assistant}", name, "{collection}", collection).Replace(system)
 }

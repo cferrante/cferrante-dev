@@ -40,6 +40,7 @@ import (
 	"github.com/cferrante/cferrante-dev/orchestrator/server"
 	"github.com/cferrante/cferrante-dev/orchestrator/suggested"
 	"github.com/cferrante/cferrante-dev/orchestrator/tools"
+	"github.com/cferrante/cferrante-dev/orchestrator/wording"
 )
 
 type config struct {
@@ -51,6 +52,7 @@ type config struct {
 	webDir                            string        // the page (design §14)
 	assistant                         string        // the assistant's name, in the system prompt
 	suggestedFile                     string        // stored answers for the suggestion chips (design §14)
+	messagesFile                      string        // visitor wording overrides, shared with the page build (design §14)
 	provider, groqModel, groqKeyParam string        // CHAT_PROVIDER: ollama | groq
 	awsProfile, awsRegion             string        // for SSM and Bedrock
 	bedrockModel                      string        // the fallback when CHAT_PROVIDER=groq
@@ -77,6 +79,7 @@ func parse(args []string, getenv cfg.Getenv) (config, error) {
 	fs.DurationVar(&c.deadline, "turn-deadline", env.Duration("TURN_DEADLINE", 5*time.Minute), "whole-turn limit; generous because CPU inference is slow [TURN_DEADLINE]")
 	fs.StringVar(&c.assistant, "assistant", env.String("ASSISTANT_NAME", agent.DefaultAssistantName), "the assistant's name, also shown by the page [ASSISTANT_NAME]")
 	fs.StringVar(&c.suggestedFile, "suggested", env.String("SUGGESTED_FILE", "orchestrator/corpus/testdata/suggested.json"), "stored answers for the suggestion chips; none for no chips [SUGGESTED_FILE]")
+	fs.StringVar(&c.messagesFile, "messages", env.String("MESSAGES_FILE", ""), "JSON file overriding the visitor wording; make site builds the same file into the page [MESSAGES_FILE]")
 	fs.StringVar(&c.webDir, "web", env.String("WEB_DIR", "web"), "directory of the page, served at / [WEB_DIR]")
 	fs.StringVar(&c.availability, "availability", env.String("AVAILABILITY", "Weekdays, office hours (not configured)."), "check_availability answer [AVAILABILITY]")
 	if err := env.Err(); err != nil {
@@ -109,6 +112,11 @@ func parse(args []string, getenv cfg.Getenv) (config, error) {
 // setup builds the index and returns the HTTP handler and a cleanup func.
 // newTitan creates the Bedrock client, only when EMBEDDER=titan.
 func setup(ctx context.Context, c config, m model.Model, logw io.Writer, newTitan func() (embed.Invoker, error)) (http.Handler, func(), error) {
+	// Checked before the index is built, so a typo fails fast.
+	words, err := wording.Load(c.messagesFile, os.ReadFile)
+	if err != nil {
+		return nil, nil, err
+	}
 	e, err := c.idx.NewEmbedder(newTitan)
 	if err != nil {
 		return nil, nil, err
@@ -154,7 +162,7 @@ func setup(ctx context.Context, c config, m model.Model, logw io.Writer, newTita
 	outbox := &tools.MemoryOutbox{Log: logw}
 	a := &agent.Agent{Model: m, Retriever: r, Store: agent.NewMemoryStore(), Clock: clock.Real{},
 		Tools:   tools.New(tools.Static{ContactOptions: c.contact, Availability: c.availability}, outbox),
-		Pending: tools.NewMemoryPending(), Deadline: c.deadline, AssistantName: c.assistant, Log: logw,
+		Pending: tools.NewMemoryPending(), Deadline: c.deadline, AssistantName: c.assistant, Log: logw, Wording: words,
 		Suggestions: store}
 	mux := http.NewServeMux()
 	mux.Handle("/chat", &server.Chat{Agent: a, Auth: auth.Fixed(caller), Clock: clock.Real{}})
