@@ -65,6 +65,9 @@ const (
 	Reasoning EventKind = iota + 1
 	Text
 	ToolCallEvent
+	// Notice is the router telling the caller something about the turn, such
+	// as why it fell back; Text is a short reason (design D4).
+	Notice
 )
 
 // Event is one streamed piece of a turn.

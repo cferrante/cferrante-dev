@@ -3,6 +3,7 @@ package model
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -85,8 +86,27 @@ func (r *Router) Stream(ctx context.Context, req Request, onEvent func(Event) er
 	if s == timedOut {
 		err = ErrFirstTokenTimeout
 	}
+	// Tell the caller before the fallback's first token, so the visitor knows
+	// why the reasoning stops (design D4).
+	if nerr := onEvent(Event{Kind: Notice, Text: reason(err)}); nerr != nil {
+		return Result{Fallback: true, PrimaryErr: err}, nerr
+	}
 	res, ferr := r.Fallback.Stream(ctx, req, onEvent)
 	res.Fallback = true
 	res.PrimaryErr = err
 	return res, ferr
+}
+
+// reason says in a few words why the primary was abandoned.
+func reason(err error) string {
+	var he *HTTPError
+	switch {
+	case errors.Is(err, ErrFirstTokenTimeout):
+		return "not responding"
+	case errors.As(err, &he) && he.Status == 429:
+		return "rate-limited"
+	case errors.As(err, &he):
+		return fmt.Sprintf("unavailable (HTTP %d)", he.Status)
+	}
+	return "unavailable"
 }

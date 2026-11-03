@@ -17,7 +17,9 @@ func text(s string) model.Event { return model.Event{Kind: model.Text, Text: s} 
 func collect(ctx context.Context, r *model.Router) ([]string, model.Result, error) {
 	var got []string
 	res, err := r.Stream(ctx, model.Request{}, func(e model.Event) error {
-		got = append(got, e.Text)
+		if e.Kind != model.Notice { // notices are checked by their own tests
+			got = append(got, e.Text)
+		}
 		return nil
 	})
 	return got, res, err
@@ -129,5 +131,40 @@ func waitFor(t *testing.T, cond func() bool) {
 			t.Fatal("condition not met within 2 s")
 		}
 		time.Sleep(time.Millisecond)
+	}
+}
+
+// collectAll records every event, notices included.
+func collectAll(ctx context.Context, r *model.Router) ([]model.Event, model.Result, error) {
+	var got []model.Event
+	res, err := r.Stream(ctx, model.Request{}, func(e model.Event) error { got = append(got, e); return nil })
+	return got, res, err
+}
+
+func TestFallbackIsAnnouncedFirstWithTheReason(t *testing.T) {
+	for _, tc := range []struct {
+		err  error
+		want string
+	}{
+		{&model.HTTPError{Status: 429}, "rate-limited"},
+		{&model.HTTPError{Status: 503}, "unavailable (HTTP 503)"},
+		{errors.New("dial tcp: connection refused"), "unavailable"},
+	} {
+		p := &fake.Model{Name: "groq", ErrBefore: tc.err}
+		f := &fake.Model{Name: "bedrock", Events: []model.Event{text("x")}}
+		got, _, err := collectAll(context.Background(), &model.Router{Primary: p, Fallback: f, Clock: clock.NewFake()})
+		if err != nil || len(got) != 2 || got[0].Kind != model.Notice || got[0].Text != tc.want || got[1].Text != "x" {
+			t.Errorf("%v: events %+v, err %v; want a notice %q, then the answer", tc.err, got, err, tc.want)
+		}
+	}
+}
+
+func TestNoNoticeWhenThePrimaryAnswers(t *testing.T) {
+	p := &fake.Model{Name: "groq", Events: []model.Event{text("a")}}
+	got, _, _ := collectAll(context.Background(), &model.Router{Primary: p, Fallback: &fake.Model{}, Clock: clock.NewFake()})
+	for _, e := range got {
+		if e.Kind == model.Notice {
+			t.Errorf("notice without a fallback: %+v", e)
+		}
 	}
 }

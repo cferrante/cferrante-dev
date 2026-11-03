@@ -200,6 +200,8 @@ func (a *Agent) Turn(ctx context.Context, caller auth.Caller, req TurnRequest, w
 				}
 			case model.ToolCallEvent:
 				calls = append(calls, *e.ToolCall)
+			case model.Notice: // the router fell back (design D4)
+				return w.Thought(fmt.Sprintf("The main model is %s, so the backup model is answering.", e.Text), "agent")
 			}
 			return nil
 		})
