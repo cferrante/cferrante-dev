@@ -1,6 +1,6 @@
 // Command siteconfig writes web/dist/config.js, the page's build-time
-// settings (design §14): the site and assistant names and any overrides of
-// the friendly error messages. Settings come from the environment (or .env);
+// settings (design §14): the site, assistant and owner names and any
+// overrides of the visitor wording. Settings come from the environment (or .env);
 // MESSAGES_FILE names a JSON file of message overrides.
 //
 // The page in production is static files, so build-time settings keep it
@@ -15,15 +15,18 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 
 	cfg "github.com/cferrante/cferrante-dev/orchestrator/config"
 	"github.com/cferrante/cferrante-dev/orchestrator/wording"
 )
 
 type siteConfig struct {
-	SiteName      string            `json:"siteName"`
-	AssistantName string            `json:"assistantName"`
-	Messages      map[string]string `json:"messages"`
+	SiteName       string            `json:"siteName"`
+	AssistantName  string            `json:"assistantName"`
+	OwnerName      string            `json:"ownerName"`
+	OwnerFirstName string            `json:"ownerFirstName"`
+	Messages       map[string]string `json:"messages"`
 }
 
 // generate returns the contents of config.js. A bad MESSAGES_FILE stops the
@@ -33,7 +36,11 @@ func generate(getenv cfg.Getenv, readFile func(string) ([]byte, error)) ([]byte,
 	c := siteConfig{
 		SiteName:      env.String("SITE_NAME", "cferrante.dev"),
 		AssistantName: env.String("ASSISTANT_NAME", "Context Concierge"),
-		Messages:      map[string]string{},
+		// The owner's names, for the welcome (step 6.0a). No defaults: they're
+		// only needed when the welcome uses them, checked below.
+		OwnerName:      env.String("OWNER_NAME", ""),
+		OwnerFirstName: env.String("OWNER_FIRST_NAME", ""),
+		Messages:       map[string]string{},
 	}
 	// The same file and validation as the server's (orchestrator/wording);
 	// an unknown key, empty value or bad placeholder stops the build.
@@ -42,6 +49,16 @@ func generate(getenv cfg.Getenv, readFile func(string) ([]byte, error)) ([]byte,
 		return nil, err
 	}
 	c.Messages = w.Overrides()
+	// A name the welcome uses but nobody set would show visitors a stand-in.
+	welcome := w.Get("welcome")
+	for _, n := range []struct{ placeholder, setting, value string }{
+		{"{owner}", "OWNER_NAME", c.OwnerName},
+		{"{owner_first}", "OWNER_FIRST_NAME", c.OwnerFirstName},
+	} {
+		if strings.Contains(welcome, n.placeholder) && n.value == "" {
+			return nil, fmt.Errorf("the welcome uses %s, so set %s", n.placeholder, n.setting)
+		}
+	}
 	// json.Marshal escapes <, > and & (as <...), so no value can close a
 	// script tag or inject markup; the page also shows every value as text.
 	body, err := json.Marshal(c)

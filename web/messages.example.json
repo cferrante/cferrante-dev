@@ -21,5 +21,6 @@
   "excerpt_other": "excerpts",
   "retrieval_found": "Found {excerpts} from {sources}: {titles}.",
   "retrieval_none": "Nothing in the {collection} matched; I'll say so rather than guess.",
-  "retrieval_card": "{excerpts} · {sources} · top score {score}"
+  "retrieval_card": "{excerpts} · {sources} · top score {score}",
+  "welcome": "Hi, I'm the {assistant}. Ask about the work in this portfolio, or pick a suggested question below."
 }

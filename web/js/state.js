@@ -1,6 +1,6 @@
 // The UI state and the pure reducer that applies one stream event to it
 // (design §14). The page renders from this state; nothing here touches the DOM.
-import { friendlyError } from "./messages.js";
+import { friendlyError, text } from "./messages.js";
 
 export function initialState(config = {}) {
   return {
@@ -19,6 +19,13 @@ export function initialState(config = {}) {
     // across new questions; handled and expired cards are cleared by the next one.
     proposals: [],
   };
+}
+
+// shownAnswer is what the answer area shows: the welcome until the first
+// question (or confirmation), then the current answer. The welcome is page
+// text: it never enters the state's answer, so it's never sent anywhere.
+export function shownAnswer(state) {
+  return state.question ? state.answer : text("welcome", state.config);
 }
 
 const updateProposals = (state, pred, change) =>

@@ -1,6 +1,6 @@
 // Package wording holds the visitor-facing wording that MESSAGES_FILE may
 // override (design §14): the friendly error messages and the retrieval
-// wording (sources, excerpts, the portfolio). The page build and the server
+// wording (sources, excerpts, the portfolio) and the welcome. The page build and the server
 // both load the file through this package, so they validate it the same way
 // and can't disagree. Wording is configurable; behaviour (which errors offer
 // Retry, the prompt's instructions) is not.
@@ -54,6 +54,12 @@ var specs = map[string]spec{
 	"retrieval_card": {def: "{excerpts} · {sources} · top score {score}",
 		allowed:  []string{"excerpts", "sources", "score"},
 		required: []string{"excerpts"}},
+
+	// The page's greeting before the first question (step 6.0a). The only
+	// wording about the owner, so the only key that may name them; the page
+	// build stops if a name it uses isn't set.
+	"welcome": {def: "Hi, I'm the {assistant}. Ask about the work in this portfolio, or pick a suggested question below.",
+		allowed: []string{"assistant", "site", "owner", "owner_first"}},
 }
 
 // Keys lists every key a MESSAGES_FILE may set, sorted.

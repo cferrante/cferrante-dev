@@ -33,6 +33,10 @@ export const defaultMessages = {
   retrieval_found: "Found {excerpts} from {sources}: {titles}.",
   retrieval_none: "Nothing in the {collection} matched; I'll say so rather than guess.",
   retrieval_card: "{excerpts} · {sources} · top score {score}",
+  // The greeting before the first question (step 6.0a); the only wording that
+  // may name the owner. The page build stops if a name it uses isn't set.
+  welcome:
+    "Hi, I'm the {assistant}. Ask about the work in this portfolio, or pick a suggested question below.",
 };
 
 const retryable = {
@@ -55,13 +59,15 @@ const retryable = {
   action_failed: false,
 };
 
-// text returns a key's wording, configured or default, with {assistant}
-// and {site} filled in.
+// text returns a key's wording, configured or default, with {assistant},
+// {site}, {owner} and {owner_first} filled in.
 export function text(key, config = {}) {
   const template = (config.messages && config.messages[key]) || defaultMessages[key];
   return template
     .replaceAll("{assistant}", config.assistantName || "assistant")
-    .replaceAll("{site}", config.siteName || "this site");
+    .replaceAll("{site}", config.siteName || "this site")
+    .replaceAll("{owner_first}", config.ownerFirstName || "the site owner")
+    .replaceAll("{owner}", config.ownerName || "the site owner");
 }
 
 // count renders "1 excerpt" or "4 excerpts" from the noun's _one and _other forms.
