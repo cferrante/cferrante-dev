@@ -7,6 +7,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -18,6 +19,7 @@ import (
 	cfg "github.com/cferrante/cferrante-dev/orchestrator/config"
 	"github.com/cferrante/cferrante-dev/orchestrator/embed"
 	"github.com/cferrante/cferrante-dev/orchestrator/indexing"
+	"github.com/cferrante/cferrante-dev/orchestrator/retrieval"
 )
 
 func main() {
@@ -64,7 +66,7 @@ func run(args []string, getenv cfg.Getenv, out io.Writer, newBedrock func(profil
 	}
 	st, err := s.Build(context.Background(), e)
 	if err != nil {
-		if s.Embedder == "titan" {
+		if s.Embedder == "titan" && errors.Is(err, retrieval.ErrEmbed) {
 			return fmt.Errorf("%w (if your AWS session has expired: aws sso login --profile %s)", err, *profile)
 		}
 		return err

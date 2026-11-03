@@ -110,13 +110,15 @@ func setup(ctx context.Context, c config, m model.Model, logw io.Writer, newTita
 		return nil, nil, err
 	}
 	st, err := c.idx.Build(ctx, e)
-	if err != nil {
+	if errors.Is(err, retrieval.ErrEmbed) {
 		switch c.idx.Embedder {
 		case "ollama":
 			err = fmt.Errorf("building the index (is Ollama running?): %w", err)
 		case "titan":
 			err = fmt.Errorf("building the index: %w (if your AWS session has expired: aws sso login --profile %s)", err, c.awsProfile)
 		}
+	}
+	if err != nil {
 		return nil, nil, err
 	}
 	r, err := retrieval.Load(c.idx.IndexPath, e)

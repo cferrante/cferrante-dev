@@ -6,6 +6,7 @@ package retrieval
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -43,6 +44,10 @@ type SidecarChunk struct {
 	Text    string `json:"text"`
 }
 
+// ErrEmbed marks a build that failed in the embedder (a model or network
+// problem), as opposed to the corpus or the disk.
+var ErrEmbed = errors.New("embed")
+
 // batchSize is how many texts go to the embedder per call.
 const batchSize = 32
 
@@ -77,7 +82,7 @@ func Build(ctx context.Context, chunks []corpus.Chunk, e embed.Embedder, indexPa
 	for i := 0; i < len(texts); i += batchSize {
 		batch, err := e.Embed(ctx, texts[i:min(i+batchSize, len(texts))])
 		if err != nil {
-			return fmt.Errorf("embed: %w", err)
+			return fmt.Errorf("%w: %w", ErrEmbed, err)
 		}
 		vecs = append(vecs, batch...)
 	}

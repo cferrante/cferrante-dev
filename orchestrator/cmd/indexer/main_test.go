@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -76,5 +77,24 @@ func TestIndexerArguments(t *testing.T) {
 		if err := run(args, envOf(nil), &bytes.Buffer{}, nil); err == nil {
 			t.Errorf("%s: want an error", name)
 		}
+	}
+}
+
+type failingTitan struct{}
+
+func (failingTitan) InvokeModel(context.Context, *bedrockruntime.InvokeModelInput, ...func(*bedrockruntime.Options)) (*bedrockruntime.InvokeModelOutput, error) {
+	return nil, errors.New("ExpiredToken")
+}
+
+// Only a Titan failure suggests logging in; a corpus mistake is reported as itself.
+func TestIndexerLoginHintOnlyForTitanFailures(t *testing.T) {
+	newBedrock := func(string, string) (embed.Invoker, error) { return failingTitan{}, nil }
+	err := run([]string{"-corpus", fixture, "-index", filepath.Join(t.TempDir(), "t.idx"), "-embedder", "titan"}, envOf(nil), &bytes.Buffer{}, newBedrock)
+	if err == nil || !strings.Contains(err.Error(), "aws sso login --profile cferrante-dev-admin") {
+		t.Errorf("titan failure: err = %v, want the login command", err)
+	}
+	err = run([]string{"-corpus", "nope", "-index", filepath.Join(t.TempDir(), "t.idx"), "-embedder", "titan"}, envOf(nil), &bytes.Buffer{}, newBedrock)
+	if err == nil || strings.Contains(err.Error(), "sso") {
+		t.Errorf("missing folder: err = %v, want no login hint", err)
 	}
 }

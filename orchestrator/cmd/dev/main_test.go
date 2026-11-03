@@ -425,10 +425,10 @@ func TestDevIndexesWithTitan(t *testing.T) {
 }
 
 func TestAFailedTitanBuildExplainsHowToLogIn(t *testing.T) {
-	c, _ := parse([]string{"-index", filepath.Join(t.TempDir(), "dev.idx")}, envOf(map[string]string{"EMBEDDER": "titan"}))
+	c, _ := parse([]string{"-corpus", "../../corpus/testdata/corpus", "-index", filepath.Join(t.TempDir(), "dev.idx")}, envOf(map[string]string{"EMBEDDER": "titan"}))
 	_, _, err := setup(context.Background(), c, &fake.Model{}, &bytes.Buffer{},
 		func() (embed.Invoker, error) { return failingTitan{}, nil })
-	if err == nil || !strings.Contains(err.Error(), "aws sso login --profile cferrante-dev-admin") || strings.Contains(err.Error(), "Ollama") {
+	if err == nil || !strings.Contains(err.Error(), "ExpiredToken") || !strings.Contains(err.Error(), "aws sso login --profile cferrante-dev-admin") || strings.Contains(err.Error(), "Ollama") {
 		t.Errorf("err = %v, want the login command and no mention of Ollama", err)
 	}
 }
@@ -437,4 +437,17 @@ type failingTitan struct{}
 
 func (failingTitan) InvokeModel(context.Context, *bedrockruntime.InvokeModelInput, ...func(*bedrockruntime.Options)) (*bedrockruntime.InvokeModelOutput, error) {
 	return nil, errors.New("ExpiredToken")
+}
+
+// Only an embedding failure points at Ollama or AWS; a corpus mistake is
+// reported as itself.
+func TestACorpusErrorDoesNotBlameTheEmbedder(t *testing.T) {
+	for _, embedder := range []string{"ollama", "titan"} {
+		c, _ := parse([]string{"-corpus", filepath.Join(t.TempDir(), "missing"), "-index", filepath.Join(t.TempDir(), "dev.idx")},
+			envOf(map[string]string{"EMBEDDER": embedder}))
+		_, _, err := setup(context.Background(), c, &fake.Model{}, &bytes.Buffer{}, func() (embed.Invoker, error) { return &fakeTitan{}, nil })
+		if err == nil || !strings.Contains(err.Error(), "missing") || strings.Contains(err.Error(), "Ollama") || strings.Contains(err.Error(), "sso") {
+			t.Errorf("%s: err = %v, want the missing folder without an Ollama or AWS hint", embedder, err)
+		}
+	}
 }
