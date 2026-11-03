@@ -22,6 +22,17 @@ export const defaultMessages = {
   action_not_found: "That request is no longer available. Ask again if you still want it.",
   not_authorized: "You can no longer do that. Please sign in again.",
   action_failed: "That didn't go through, and it wasn't retried. Please try again later.",
+  // Retrieval wording (step 5.3a): visitors read sources and excerpts from the
+  // portfolio. The server uses the same keys for the thought stream; a Go test
+  // keeps these defaults equal to orchestrator/wording's.
+  collection: "portfolio",
+  source_one: "source",
+  source_other: "sources",
+  excerpt_one: "excerpt",
+  excerpt_other: "excerpts",
+  retrieval_found: "Found {excerpts} from {sources}: {titles}.",
+  retrieval_none: "Nothing in the {collection} matched; I'll say so rather than guess.",
+  retrieval_card: "{excerpts} · {sources} · top score {score}",
 };
 
 const retryable = {
@@ -44,15 +55,22 @@ const retryable = {
   action_failed: false,
 };
 
-function wording(key, config) {
+// text returns a key's wording, configured or default, with {assistant}
+// and {site} filled in.
+export function text(key, config = {}) {
   const template = (config.messages && config.messages[key]) || defaultMessages[key];
   return template
     .replaceAll("{assistant}", config.assistantName || "assistant")
     .replaceAll("{site}", config.siteName || "this site");
 }
 
+// count renders "1 excerpt" or "4 excerpts" from the noun's _one and _other forms.
+export function count(n, noun, config = {}) {
+  return `${n} ${text(n === 1 ? `${noun}_one` : `${noun}_other`, config)}`;
+}
+
 function message(key, config) {
-  return { message: wording(key, config), retryable: retryable[key] };
+  return { message: text(key, config), retryable: retryable[key] };
 }
 
 // friendlyError takes {code, message, status?} and the site config, and
@@ -67,5 +85,6 @@ export function friendlyError(err, config = {}) {
     }
     return message("server_error", config);
   }
-  return message(err.code in defaultMessages ? err.code : "server_error", config);
+  // retryable lists the error codes; defaultMessages also holds other wording.
+  return message(err.code in retryable ? err.code : "server_error", config);
 }

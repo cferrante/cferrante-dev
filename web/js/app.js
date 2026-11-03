@@ -140,7 +140,7 @@ function renderCards() {
       ? formatDuration(card.durationMs)
       : `${formatDuration(performance.now() - cardStarted.get(card.id))}…`;
     const details = li.querySelector('[data-role="details"]');
-    const lines = cardDetails(card);
+    const lines = cardDetails(card, site);
     if (
       details.childElementCount !== lines.length ||
       [...details.children].some((d, j) => d.textContent !== lines[j])

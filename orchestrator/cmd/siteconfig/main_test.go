@@ -5,7 +5,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 )
@@ -110,41 +109,21 @@ func TestRunWritesTheFile(t *testing.T) {
 	}
 }
 
-// MessageKeys and the page's defaultMessages must list the same keys, or a
-// new message would be rejected here or silently ignored there.
-func TestKeysMatchThePage(t *testing.T) {
-	src, err := os.ReadFile("../../../web/js/messages.js")
+// The retrieval wording (step 5.3a) goes through the same file, with the
+// same validation as the server's (orchestrator/wording).
+func TestRetrievalWordingReachesThePage(t *testing.T) {
+	js, err := generate(envOf(map[string]string{"MESSAGES_FILE": "m.json"}),
+		files(map[string]string{"m.json": `{"retrieval_card": "{excerpts} (score {score})", "excerpt_other": "snippets"}`}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := string(src)
-	start := strings.Index(s, "export const defaultMessages = {")
-	end := strings.Index(s[start:], "\n};")
-	if start < 0 || end < 0 {
-		t.Fatal("defaultMessages not found in messages.js")
+	m := parse(t, js)["messages"].(map[string]any)
+	if m["retrieval_card"] != "{excerpts} (score {score})" || m["excerpt_other"] != "snippets" {
+		t.Errorf("messages = %v", m)
 	}
-	var page []string
-	for _, line := range strings.Split(s[start:start+end], "\n")[1:] {
-		if key, _, ok := strings.Cut(strings.TrimSpace(line), ":"); ok && key != "" {
-			page = append(page, key)
-		}
-	}
-	slices.Sort(page)
-	ours := slices.Clone(MessageKeys)
-	slices.Sort(ours)
-	if !slices.Equal(page, ours) {
-		t.Errorf("messages.js keys %v\nsiteconfig keys %v", page, ours)
-	}
-}
-
-// The committed example lists every key with the default wording; keep it
-// valid input.
-func TestExampleMessagesFileIsValid(t *testing.T) {
-	js, err := generate(envOf(map[string]string{"MESSAGES_FILE": "../../../web/messages.example.json"}), os.ReadFile)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if m := parse(t, js)["messages"].(map[string]any); len(m) != len(MessageKeys) {
-		t.Errorf("example has %d messages, want all %d", len(m), len(MessageKeys))
+	_, err = generate(envOf(map[string]string{"MESSAGES_FILE": "m.json"}),
+		files(map[string]string{"m.json": `{"retrieval_card": "{exerpts}"}`}))
+	if err == nil || !strings.Contains(err.Error(), "{exerpts}") {
+		t.Errorf("misspelt placeholder: err = %v, want the build stopped", err)
 	}
 }

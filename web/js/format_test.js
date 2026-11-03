@@ -20,8 +20,14 @@ Deno.test("card titles name the step, and the provider for inference", () => {
 });
 
 Deno.test("detail lines show the measured numbers", () => {
-  assertEquals(cardDetails({ kind: "retrieval", detail: { hits: 4, top_score: 0.0327 } }), [
-    "4 passages · top score 0.033",
+  assertEquals(cardDetails({ kind: "retrieval", detail: { hits: 4, sources: 2, top_score: 0.0327 } }), [
+    "4 excerpts · 2 sources · top score 0.033",
+  ]);
+  assertEquals(cardDetails({ kind: "retrieval", detail: { hits: 1, sources: 1, top_score: 0.5 } }), [
+    "1 excerpt · 1 source · top score 0.500",
+  ]);
+  assertEquals(cardDetails({ kind: "retrieval", detail: { hits: 0, sources: 0 } }), [
+    "0 excerpts · 0 sources · top score 0.000",
   ]);
   assertEquals(
     cardDetails({
@@ -75,4 +81,19 @@ Deno.test("a stored answer's card says no model was called", () => {
   assertEquals(cardTitle({ kind: "cache", label: "Stored answer" }), "Stored answer");
   assertEquals(cardDetails({ kind: "cache", detail: { hit: true } }), ["pre-verified · no model call"]);
   assertEquals(cardDetails({ kind: "cache", detail: { hit: false } }), ["not available"]);
+});
+
+Deno.test("the retrieval card uses the configured wording (MESSAGES_FILE)", () => {
+  const config = {
+    messages: {
+      retrieval_card: "{excerpts} (score {score})",
+      excerpt_one: "snippet",
+      excerpt_other: "snippets",
+    },
+  };
+  const card = { kind: "retrieval", detail: { hits: 4, sources: 2, top_score: 0.0327 } };
+  assertEquals(cardDetails(card, config), ["4 snippets (score 0.033)"]);
+  assertEquals(cardDetails({ ...card, detail: { ...card.detail, hits: 1 } }, config), [
+    "1 snippet (score 0.033)",
+  ]);
 });

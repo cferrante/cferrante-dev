@@ -15,20 +15,10 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"slices"
-	"strings"
 
 	cfg "github.com/cferrante/cferrante-dev/orchestrator/config"
+	"github.com/cferrante/cferrante-dev/orchestrator/wording"
 )
-
-// MessageKeys are the friendly messages a MESSAGES_FILE may override; they
-// match web/js/messages.js. Which errors offer Retry is not configurable:
-// that's behaviour, not wording.
-var MessageKeys = []string{
-	"network", "timeout", "model_unavailable", "retrieval_failed", "rate_limited",
-	"tool_limit", "incomplete", "session_ended", "server_error", "empty_answer",
-	"action_expired", "action_already_done", "action_not_found", "not_authorized", "action_failed",
-}
 
 type siteConfig struct {
 	SiteName      string            `json:"siteName"`
@@ -36,8 +26,8 @@ type siteConfig struct {
 	Messages      map[string]string `json:"messages"`
 }
 
-// generate returns the contents of config.js. An unknown or empty message
-// key stops the build, so a typo can't silently fall back to the default.
+// generate returns the contents of config.js. A bad MESSAGES_FILE stops the
+// build, so a typo can't silently fall back to the default.
 func generate(getenv cfg.Getenv, readFile func(string) ([]byte, error)) ([]byte, error) {
 	env := cfg.New(getenv)
 	c := siteConfig{
@@ -45,29 +35,13 @@ func generate(getenv cfg.Getenv, readFile func(string) ([]byte, error)) ([]byte,
 		AssistantName: env.String("ASSISTANT_NAME", "Context Concierge"),
 		Messages:      map[string]string{},
 	}
-	if path := env.String("MESSAGES_FILE", ""); path != "" {
-		raw, err := readFile(path)
-		if err != nil {
-			return nil, fmt.Errorf("MESSAGES_FILE: %w", err)
-		}
-		var m map[string]json.RawMessage
-		if err := json.Unmarshal(raw, &m); err != nil {
-			return nil, fmt.Errorf("%s: want a JSON object of strings: %w", path, err)
-		}
-		for key, value := range m {
-			if !slices.Contains(MessageKeys, key) {
-				return nil, fmt.Errorf("%s: unknown message %q (known: %s)", path, key, strings.Join(MessageKeys, ", "))
-			}
-			var s string
-			if err := json.Unmarshal(value, &s); err != nil {
-				return nil, fmt.Errorf("%s: message %q: want a JSON string: %w", path, key, err)
-			}
-			if strings.TrimSpace(s) == "" {
-				return nil, fmt.Errorf("%s: message %q is empty", path, key)
-			}
-			c.Messages[key] = s
-		}
+	// The same file and validation as the server's (orchestrator/wording);
+	// an unknown key, empty value or bad placeholder stops the build.
+	w, err := wording.Load(env.String("MESSAGES_FILE", ""), readFile)
+	if err != nil {
+		return nil, err
 	}
+	c.Messages = w.Overrides()
 	// json.Marshal escapes <, > and & (as <...), so no value can close a
 	// script tag or inject markup; the page also shows every value as text.
 	body, err := json.Marshal(c)

@@ -115,3 +115,12 @@ Deno.test("confirmation refusals have plain sentences and never offer Retry", ()
     );
   }
 });
+
+Deno.test("wording keys are not error codes", () => {
+  // defaultMessages also holds the retrieval wording; a code that happens to
+  // match one of those keys is still an unknown error.
+  assertEquals(
+    friendlyError({ code: "collection", message: "x" }),
+    friendlyError({ code: "server_error", message: "x" }),
+  );
+});

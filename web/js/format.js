@@ -1,6 +1,8 @@
 // Text for the action cards: titles, durations and detail lines. Every
 // number shown comes from the server's measurements (README: never mocked).
 
+import { count, text } from "./messages.js";
+
 // formatDuration keeps about three significant figures.
 export function formatDuration(ms) {
   if (ms < 10) return `${Number(ms.toFixed(2))} ms`;
@@ -29,12 +31,18 @@ export function cardTitle(card) {
   return card.label ? `${kind} · ${card.label}` : kind;
 }
 
-export function cardDetails(card) {
+// cardDetails takes the site config for the configurable wording (MESSAGES_FILE).
+export function cardDetails(card, config = {}) {
   const d = card.detail;
   if (!d) return [];
   switch (card.kind) {
     case "retrieval":
-      return [`${d.hits} passages · top score ${Number(d.top_score ?? 0).toFixed(3)}`];
+      return [
+        text("retrieval_card", config)
+          .replaceAll("{excerpts}", count(d.hits ?? 0, "excerpt", config))
+          .replaceAll("{sources}", count(d.sources ?? 0, "source", config))
+          .replaceAll("{score}", Number(d.top_score ?? 0).toFixed(3)),
+      ];
     case "inference": {
       const speed = d.tokens_per_s ? ` · ${Math.round(d.tokens_per_s)} tok/s` : "";
       const cached = d.cached_tokens ? ` · ${d.cached_tokens} cached` : "";
