@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -485,5 +486,37 @@ func TestRetrievalCardCountsSourcesAndExcerpts(t *testing.T) {
 	evs := h.turn(t, context.Background(), auth.Caller{}, TurnRequest{Message: "q"})
 	if d := evs[1].data["detail"].(map[string]any); d["hits"] != float64(3) || d["sources"] != float64(2) {
 		t.Errorf("retrieval detail = %v, want 3 excerpts from 2 sources", d)
+	}
+}
+
+// A stopped or timed-out turn says so in the log, with the time the model
+// spent, so a slow model is visible rather than an unexplained "error"
+// (step 6.0c: Stop makes cancelled turns routine).
+func TestCancelledAndTimedOutTurnsAreLoggedAsSuch(t *testing.T) {
+	var log strings.Builder
+	h := newHarness(&fake.Model{Name: "groq", Block: true}, &fakeRetriever{chunks: twoChunks})
+	h.agent.Log = &log
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		waitFor(t, func() bool { return len(h.model.Requests()) > 0 })
+		cancel()
+	}()
+	h.turn(t, ctx, auth.Caller{}, TurnRequest{Message: "q"})
+	if !strings.Contains(log.String(), "outcome=cancelled") {
+		t.Errorf("cancelled turn logged as:\n%s", log.String())
+	}
+
+	log.Reset()
+	h = newHarness(&fake.Model{Name: "groq", Block: true}, &fakeRetriever{chunks: twoChunks})
+	h.agent.Log = &log
+	done := make(chan struct{})
+	go func() { h.turn(t, context.Background(), auth.Caller{}, TurnRequest{Message: "q"}); close(done) }()
+	waitFor(t, func() bool { return len(h.model.Requests()) > 0 })
+	h.clock.Advance(TurnDeadline)
+	<-done
+	for _, want := range []string{"outcome=timeout", fmt.Sprintf("inference_ms=%d", TurnDeadline.Milliseconds())} {
+		if !strings.Contains(log.String(), want) {
+			t.Errorf("timed-out turn log lacks %q:\n%s", want, log.String())
+		}
 	}
 }
