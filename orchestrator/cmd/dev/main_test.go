@@ -320,7 +320,10 @@ func TestReasoningEffortDefaultsPerProvider(t *testing.T) {
 
 func TestChatModelForEachProvider(t *testing.T) {
 	var asked string
-	secret := func(_ context.Context, name string) (string, error) { asked = name; return "test-value-not-a-real-key", nil }
+	secret := func(_ context.Context, name string) (string, error) {
+		asked = name
+		return "test-value-not-a-real-key", nil
+	}
 	c, _ := parse(nil, envOf(map[string]string{"CHAT_PROVIDER": "groq"}))
 	m, err := chatModel(context.Background(), c, secret)
 	if err != nil {
