@@ -166,9 +166,13 @@ primary sends nothing within a **first-token timeout of 5 s**, the router cancel
 back, so a hung provider can't stall the turn.
 
 **[Embeddings](concepts.md#embedding)** are a separate interface: `Embed(ctx, texts []string) ([][]float32, error)`. Groq
-does not offer embeddings. **[[D1]](#d1-embedding-model)** Proposed: Bedrock Titan Text Embeddings v2 at 512 dimensions
+does not offer embeddings. **[[D1]](#d1-embedding-model)** Decided: Bedrock Titan Text Embeddings v2 at 512 dimensions
 in production and Ollama `nomic-embed-text` locally. The index and the query must use the *same*
-embedding model, so local and production indexes are built separately.
+embedding model, so local and production indexes are built separately. Titan
+(`orchestrator/embed`, `EMBEDDER=titan`) goes through `InvokeModel` with
+`{"inputText", "dimensions", "normalize": true}`, one text per call (Titan v2 has no batch
+input there); it accepts only 256, 512 or 1024 dimensions, and sums the
+`inputTextTokenCount` it returns, which is what it bills.
 
 ## 5. Retrieval engine (C++)
 
@@ -271,7 +275,17 @@ void         rag_builder_free(rag_builder* b);
   deploy key (Phase 7). A CI check fails any PR that commits a corpus file marked
   `access: invitee`. The built index and sidecar contain every chunk's text, private ones
   included, so they are never committed or served as static files: they ship only inside the
-  Lambda package. `CORPUS_DIRS` lists the folders to index (`corpus/public:corpus/private`).
+  Lambda package. `CORPUS_DIRS` lists the folders to index, colon-separated like `PATH`
+  (`corpus/public:corpus/private`); a missing folder is an error, so a typo can't silently
+  drop documents. The check is `make corpus-check` (run by `make test` and CI), over
+  `git ls-files` so the ignored clone is never read. It fails closed: under `corpus/` every
+  Markdown file must say `access: public` and nothing may be tracked in `corpus/private/`;
+  elsewhere any `access` value other than `public` fails, in any case or spacing. Fixtures
+  under `testdata/` are exempt.
+- **One set of settings:** `orchestrator/indexing` owns `CORPUS_DIRS`, `INDEX_PATH`,
+  `CHUNK_TARGET` and the embedder settings (`EMBEDDER`, `EMBED_MODEL`, `EMBED_DIM`,
+  `TITAN_MODEL`, `OLLAMA_BASE_URL`); the indexer and `make dev` both use it, so they build the
+  same index from the same `.env`.
 - **Input:** Markdown files in those folders, each starting with a front-matter block parsed by our
   own small parser (no YAML library), one `key: value` per line between `---` lines:
   `title`, `url`, `access` (`public` or `invitee`). Unknown keys and a missing `access` are errors,
