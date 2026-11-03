@@ -45,44 +45,18 @@ type Client struct {
 func (c *Client) Stream(ctx context.Context, req model.Request, onEvent func(model.Event) error) (model.Result, error) {
 	res := model.Result{Provider: c.Provider, Model: c.Model}
 	if req.ResponseSchema != nil {
-		return res, errors.New("oai: ResponseSchema is not supported yet (planned with the judge, Phase 6)")
+		return c.structured(ctx, req, onEvent)
 	}
-	effort := req.ReasoningEffort
-	if effort == "" {
-		effort = c.ReasoningEffort
-	}
-	body, err := json.Marshal(wireRequest{
-		Model: c.Model, Messages: wireMessages(req), Tools: wireTools(req.Tools),
-		Stream: true, StreamOptions: streamOptions{IncludeUsage: true},
-		ReasoningEffort: effort, MaxTokens: req.MaxTokens,
-	})
-	if err != nil {
-		return res, err
-	}
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+"/chat/completions", bytes.NewReader(body))
-	if err != nil {
-		return res, err
-	}
-	if c.APIKey != "" {
-		httpReq.Header.Set("Authorization", "Bearer "+c.APIKey)
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Accept", "text/event-stream")
-	hc := c.HTTP
-	if hc == nil {
-		hc = http.DefaultClient
-	}
-
 	start := time.Now()
-	resp, err := hc.Do(httpReq)
+	resp, err := c.post(ctx, wireRequest{
+		Model: c.Model, Messages: wireMessages(req), Tools: wireTools(req.Tools),
+		Stream: true, StreamOptions: &streamOptions{IncludeUsage: true},
+		ReasoningEffort: c.effort(req), MaxTokens: req.MaxTokens,
+	}, "text/event-stream")
 	if err != nil {
 		return res, err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return res, &model.HTTPError{Status: resp.StatusCode, Body: string(msg)}
-	}
 
 	var calls []*model.ToolCall // by stream index
 	var args []strings.Builder
@@ -190,6 +164,44 @@ func wireMessages(req model.Request) []wireMessage {
 	return out
 }
 
+func (c *Client) effort(req model.Request) string {
+	if req.ReasoningEffort != "" {
+		return req.ReasoningEffort
+	}
+	return c.ReasoningEffort
+}
+
+// post sends one chat completion request; a non-2xx reply is a *model.HTTPError.
+func (c *Client) post(ctx context.Context, body wireRequest, accept string) (*http.Response, error) {
+	raw, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+"/chat/completions", bytes.NewReader(raw))
+	if err != nil {
+		return nil, err
+	}
+	if c.APIKey != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+c.APIKey)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Accept", accept)
+	hc := c.HTTP
+	if hc == nil {
+		hc = http.DefaultClient
+	}
+	resp, err := hc.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		resp.Body.Close()
+		return nil, &model.HTTPError{Status: resp.StatusCode, Body: string(msg)}
+	}
+	return resp, nil
+}
+
 func wireTools(specs []model.ToolSpec) []wireTool {
 	var out []wireTool
 	for _, s := range specs {
@@ -233,13 +245,14 @@ type streamOptions struct {
 }
 
 type wireRequest struct {
-	Model           string        `json:"model"`
-	Messages        []wireMessage `json:"messages"`
-	Tools           []wireTool    `json:"tools,omitempty"`
-	Stream          bool          `json:"stream"`
-	StreamOptions   streamOptions `json:"stream_options"`
-	ReasoningEffort string        `json:"reasoning_effort,omitempty"`
-	MaxTokens       int           `json:"max_completion_tokens,omitempty"`
+	Model           string          `json:"model"`
+	Messages        []wireMessage   `json:"messages"`
+	Tools           []wireTool      `json:"tools,omitempty"`
+	Stream          bool            `json:"stream"`
+	StreamOptions   *streamOptions  `json:"stream_options,omitempty"` // only allowed when streaming
+	ReasoningEffort string          `json:"reasoning_effort,omitempty"`
+	MaxTokens       int             `json:"max_completion_tokens,omitempty"`
+	ResponseFormat  *responseFormat `json:"response_format,omitempty"`
 }
 
 type wireUsage struct {

@@ -198,14 +198,6 @@ func TestRequestEffortOverridesTheDefaultAndNoKeyMeansNoHeader(t *testing.T) {
 	}
 }
 
-func TestResponseSchemaIsRefusedUntilSupported(t *testing.T) {
-	c := client("http://unused")
-	_, err := c.Stream(context.Background(), model.Request{ResponseSchema: json.RawMessage(`{}`)}, func(model.Event) error { return nil })
-	if err == nil || !strings.Contains(err.Error(), "ResponseSchema") {
-		t.Errorf("err = %v, want a clear not-supported error", err)
-	}
-}
-
 func TestStreamTimesFirstToken(t *testing.T) {
 	const gap = 60 * time.Millisecond
 	_, res := collect(t, client(replay(t, "testdata/reasoning_text.sse", gap).URL), model.Request{})
