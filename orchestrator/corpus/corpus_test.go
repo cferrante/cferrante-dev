@@ -212,3 +212,22 @@ func TestSplitDirs(t *testing.T) {
 		}
 	}
 }
+
+// A README explains a corpus folder (the private repo needs one) and is not
+// a document: it has no front matter and must not stop the build.
+func TestReadmesAreNotDocuments(t *testing.T) {
+	dir := t.TempDir()
+	writeDoc(t, dir, "about", "invitee", "## Me\n\nText.")
+	for _, name := range []string{"README.md", "readme.md"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("# Private corpus\n\nHow this works.\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := Chunker{Target: 1000}.ReadDirs([]string{dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].ID != "about#me" {
+		t.Errorf("chunks = %+v, want only about#me", got)
+	}
+}

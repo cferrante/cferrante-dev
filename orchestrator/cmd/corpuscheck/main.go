@@ -6,7 +6,7 @@
 //
 //	go run ./orchestrator/cmd/corpuscheck   # make corpus-check; CI runs it
 //
-// It fails closed. Under corpus/, every Markdown file must say access: public
+// It fails closed. Under corpus/, every Markdown file but a README.md must say access: public
 // and nothing at all may be tracked in corpus/private/. Anywhere else, a
 // Markdown file whose front matter has any access value other than public
 // fails, whatever its case or spacing. Test fixtures under testdata/ are
@@ -23,6 +23,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/cferrante/cferrante-dev/orchestrator/corpus"
 )
 
 func main() {
@@ -73,7 +75,8 @@ func checkOne(path string, read func(string) ([]byte, error)) string {
 	if !strings.HasSuffix(path, ".md") || strings.HasPrefix(path, "testdata/") || strings.Contains(path, "/testdata/") {
 		return ""
 	}
-	inCorpus := strings.HasPrefix(path, "corpus/") && path != "corpus/README.md"
+	// A README explains its folder; the indexer skips it, so it needs no front matter.
+	inCorpus := strings.HasPrefix(path, "corpus/") && !corpus.IsReadme(path)
 	content, err := read(path)
 	if err != nil {
 		return "unreadable: " + err.Error()

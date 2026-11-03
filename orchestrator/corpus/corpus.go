@@ -260,7 +260,7 @@ func (c Chunker) Split(d Document) []Chunk {
 // ReadDir parses and splits every .md file in dir; see ReadDirs.
 func (c Chunker) ReadDir(dir string) ([]Chunk, error) { return c.ReadDirs([]string{dir}) }
 
-// ReadDirs parses and splits every .md file in each folder, folders in the
+// ReadDirs parses and splits every .md file except README.md in each folder, folders in the
 // order given and files in name order, and checks that chunk ids are unique
 // across all of them. A missing folder is an error: filepath.Glob would
 // return no files, so a typo in CORPUS_DIRS would quietly drop documents.
@@ -281,6 +281,9 @@ func (c Chunker) ReadDirs(dirs []string) ([]Chunk, error) {
 		}
 		sort.Strings(names)
 		for _, name := range names {
+			if IsReadme(name) {
+				continue
+			}
 			content, err := os.ReadFile(name)
 			if err != nil {
 				return nil, err
@@ -300,6 +303,10 @@ func (c Chunker) ReadDirs(dirs []string) ([]Chunk, error) {
 	}
 	return out, nil
 }
+
+// IsReadme reports whether a file is a folder's README.md (any case), which
+// explains the folder and is not a document.
+func IsReadme(path string) bool { return strings.EqualFold(filepath.Base(path), "README.md") }
 
 // SplitDirs splits a CORPUS_DIRS value ("corpus/public:corpus/private") at
 // colons, like PATH, dropping blanks.
