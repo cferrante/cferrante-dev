@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/cferrante/cferrante-dev/orchestrator/model"
 	"github.com/cferrante/cferrante-dev/orchestrator/model/fake"
+	"github.com/cferrante/cferrante-dev/orchestrator/model/oai"
 )
 
 func noEnv(string) string { return "" }
@@ -82,6 +84,7 @@ var allEnv = map[string]string{
 	"EMBED_DIM": "1024", "CHAT_MODEL": "llama3.1", "REASONING_EFFORT": "medium", "DEV_INVITEE": "true",
 	"CONTACT_OPTIONS": "Use the form.", "AVAILABILITY": "Tue–Thu", "TURN_DEADLINE": "90s",
 	"WEB_DIR": "/site", "ASSISTANT_NAME": "Concierge", "SUGGESTED_FILE": "/s.json",
+	"CHAT_PROVIDER": "groq", "GROQ_MODEL": "openai/gpt-oss-20b", "GROQ_KEY_PARAM": "/k", "AWS_PROFILE": "p", "AWS_REGION": "eu-west-1",
 }
 
 func TestEnvironmentSetsEveryOption(t *testing.T) {
@@ -91,7 +94,8 @@ func TestEnvironmentSetsEveryOption(t *testing.T) {
 	}
 	want := config{addr: "127.0.0.1:9999", corpusDir: "/c", index: "/i.idx", ollamaURL: "http://gpu-box:11434",
 		embedder: "hash", embedModel: "mxbai-embed-large", embedDim: 1024, model: "llama3.1", effort: "medium", invitee: true,
-		contact: "Use the form.", availability: "Tue–Thu", deadline: 90 * time.Second, webDir: "/site", assistant: "Concierge", suggestedFile: "/s.json"}
+		contact: "Use the form.", availability: "Tue–Thu", deadline: 90 * time.Second, webDir: "/site", assistant: "Concierge", suggestedFile: "/s.json",
+		provider: "groq", groqModel: "openai/gpt-oss-20b", groqKeyParam: "/k", awsProfile: "p", awsRegion: "eu-west-1"}
 	if c != want {
 		t.Errorf("config\n got %+v\nwant %+v", c, want)
 	}
@@ -272,5 +276,77 @@ func TestDevRefusesABadSuggestionsFile(t *testing.T) {
 		"-index", filepath.Join(t.TempDir(), "dev.idx")}, envOf(map[string]string{"SUGGESTED_FILE": bad}))
 	if _, _, err := setup(context.Background(), c, &fake.Model{}, &bytes.Buffer{}); err == nil || !strings.Contains(err.Error(), "invitee-only") {
 		t.Errorf("err = %v, want the leak refused", err)
+	}
+}
+
+func TestGroqSettingsFromTheEnvironment(t *testing.T) {
+	c, err := parse(nil, envOf(map[string]string{
+		"CHAT_PROVIDER": "groq", "GROQ_MODEL": "openai/gpt-oss-20b", "GROQ_KEY_PARAM": "/x/key",
+		"AWS_PROFILE": "someone", "AWS_REGION": "eu-west-1",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.provider != "groq" || c.groqModel != "openai/gpt-oss-20b" || c.groqKeyParam != "/x/key" ||
+		c.awsProfile != "someone" || c.awsRegion != "eu-west-1" {
+		t.Errorf("config = %+v", c)
+	}
+	d, _ := parse(nil, noEnv)
+	if d.provider != "ollama" || d.groqModel != "openai/gpt-oss-120b" || d.groqKeyParam != "/cferrante-dev/groq-api-key" ||
+		d.awsProfile != "cferrante-dev-admin" || d.awsRegion != "us-east-1" {
+		t.Errorf("defaults = %+v", d)
+	}
+	if _, err := parse(nil, envOf(map[string]string{"CHAT_PROVIDER": "openai"})); err == nil {
+		t.Error("unknown provider: want an error")
+	}
+}
+
+func TestReasoningEffortDefaultsPerProvider(t *testing.T) {
+	for _, tc := range []struct {
+		env  map[string]string
+		want string
+	}{
+		{map[string]string{}, "low"},                                                     // qwen3 on a CPU
+		{map[string]string{"CHAT_PROVIDER": "groq"}, ""},                                 // Groq's own default
+		{map[string]string{"CHAT_PROVIDER": "groq", "REASONING_EFFORT": "high"}, "high"}, // explicit wins
+		{map[string]string{"REASONING_EFFORT": "none"}, ""},                              // omit the field
+	} {
+		c, err := parse(nil, envOf(tc.env))
+		if err != nil || c.effort != tc.want {
+			t.Errorf("%v: effort %q, err %v; want %q", tc.env, c.effort, err, tc.want)
+		}
+	}
+}
+
+func TestChatModelForEachProvider(t *testing.T) {
+	var asked string
+	secret := func(_ context.Context, name string) (string, error) { asked = name; return "gsk_TESTONLY", nil }
+	c, _ := parse(nil, envOf(map[string]string{"CHAT_PROVIDER": "groq"}))
+	m, err := chatModel(context.Background(), c, secret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	g, ok := m.(*oai.Client)
+	if !ok || g.Provider != "groq" || g.BaseURL != oai.GroqBaseURL || g.Model != "openai/gpt-oss-120b" ||
+		g.APIKey != "gsk_TESTONLY" || asked != "/cferrante-dev/groq-api-key" {
+		t.Errorf("groq model = %+v, asked %q", m, asked)
+	}
+
+	asked = ""
+	o, _ := parse(nil, envOf(map[string]string{"OLLAMA_BASE_URL": "http://gpu:11434"}))
+	m, err = chatModel(context.Background(), o, secret)
+	if g, ok := m.(*oai.Client); err != nil || !ok || g.Provider != "ollama" || g.BaseURL != "http://gpu:11434/v1" || g.APIKey != "" || asked != "" {
+		t.Errorf("ollama model = %+v, err %v; asked for a secret: %q", m, err, asked)
+	}
+}
+
+func TestAnUnreadableGroqKeyExplainsHowToLogIn(t *testing.T) {
+	failing := func(context.Context, string) (string, error) {
+		return "", errors.New("reading SSM parameter /cferrante-dev/groq-api-key: token has expired")
+	}
+	c, _ := parse(nil, envOf(map[string]string{"CHAT_PROVIDER": "groq"}))
+	_, err := chatModel(context.Background(), c, failing)
+	if err == nil || !strings.Contains(err.Error(), "aws sso login --profile cferrante-dev-admin") {
+		t.Errorf("err = %v, want the login command", err)
 	}
 }
