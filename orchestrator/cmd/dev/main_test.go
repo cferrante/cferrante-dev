@@ -320,7 +320,7 @@ func TestReasoningEffortDefaultsPerProvider(t *testing.T) {
 
 func TestChatModelForEachProvider(t *testing.T) {
 	var asked string
-	secret := func(_ context.Context, name string) (string, error) { asked = name; return "gsk_TESTONLY", nil }
+	secret := func(_ context.Context, name string) (string, error) { asked = name; return "test-value-not-a-real-key", nil }
 	c, _ := parse(nil, envOf(map[string]string{"CHAT_PROVIDER": "groq"}))
 	m, err := chatModel(context.Background(), c, secret)
 	if err != nil {
@@ -328,7 +328,7 @@ func TestChatModelForEachProvider(t *testing.T) {
 	}
 	g, ok := m.(*oai.Client)
 	if !ok || g.Provider != "groq" || g.BaseURL != oai.GroqBaseURL || g.Model != "openai/gpt-oss-120b" ||
-		g.APIKey != "gsk_TESTONLY" || asked != "/cferrante-dev/groq-api-key" {
+		g.APIKey != "test-value-not-a-real-key" || asked != "/cferrante-dev/groq-api-key" {
 		t.Errorf("groq model = %+v, asked %q", m, asked)
 	}
 

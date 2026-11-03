@@ -13,8 +13,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
 )
 
-// A made-up value shaped like a real key, so a leak would be easy to spot.
-const fakeKey = "gsk_TESTONLY0000000000000000000000000000000000000000"
+// A made-up value, deliberately not shaped like a real key (secret scanners would flag one).
+const fakeKey = "test-value-not-a-real-key-0000000000000000"
 
 type fakeSSM struct {
 	value string
