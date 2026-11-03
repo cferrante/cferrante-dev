@@ -22,6 +22,8 @@ export const defaultMessages = {
   action_not_found: "That request is no longer available. Ask again if you still want it.",
   not_authorized: "You can no longer do that. Please sign in again.",
   action_failed: "That didn't go through, and it wasn't retried. Please try again later.",
+  // The status after the visitor pressed Stop (step 6.0c); not an error.
+  stopped: "Stopped. Press Retry for a fresh answer, or ask something else.",
   // Retrieval wording (step 5.3a): visitors read sources and excerpts from the
   // portfolio. The server uses the same keys for the thought stream; a Go test
   // keeps these defaults equal to orchestrator/wording's.

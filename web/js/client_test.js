@@ -84,3 +84,30 @@ Deno.test("getSuggested lists the chips, and an error gives none", async () => {
   const bad = () => Promise.resolve(new Response("nope", { status: 500 }));
   assertEquals(await getSuggested({ fetchFn: bad }), []);
 });
+
+// Stop aborts the request: that's the visitor's choice, not a failure, so it
+// must not be shown as "can't reach the assistant" (step 6.0c).
+Deno.test("an aborted request is no failure; others map to http or network", async () => {
+  const { failureEvent } = await import("./client.js");
+  const ctl = new AbortController();
+  ctl.abort();
+  let err;
+  try {
+    await postChat({ message: "hi" }, () => {}, {
+      fetchFn: (_u, init) => fetch("data:,", init),
+      signal: ctl.signal,
+    });
+  } catch (e) {
+    err = e;
+  }
+  assert(err, "want the abort to reject");
+  assertEquals(failureEvent(err), null);
+  const http = new Error("bad gateway");
+  http.status = 502;
+  assertEquals(failureEvent(http), { code: "http", status: 502, message: "bad gateway" });
+  assertEquals(failureEvent(new TypeError("Failed to fetch")), {
+    code: "network",
+    status: undefined,
+    message: "Failed to fetch",
+  });
+});
