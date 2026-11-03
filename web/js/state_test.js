@@ -163,3 +163,19 @@ Deno.test("citations are collected once each and cleared by a new question", () 
   s = reduce(s, "ask", { message: "next" });
   assertEquals(s.citations, []);
 });
+
+Deno.test("the welcome shows until the first question, then the answer replaces it", async () => {
+  const { shownAnswer } = await import("./state.js");
+  const config = {
+    assistantName: "Concierge",
+    ownerName: "Ada Lovelace",
+    ownerFirstName: "Ada",
+    messages: { welcome: "I'm the {assistant}.\n\nAsk about {owner}; {owner_first} reads it." },
+  };
+  let s = initialState(config);
+  assertEquals(shownAnswer(s), "I'm the Concierge.\n\nAsk about Ada Lovelace; Ada reads it.");
+  s = reduce(s, "ask", { message: "Hi" });
+  assertEquals(shownAnswer(s), "");
+  s = reduce(s, "token", { text: "Hello" });
+  assertEquals(shownAnswer(s), "Hello");
+});

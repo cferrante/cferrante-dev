@@ -8,9 +8,10 @@ import { getSuggested, postChat } from "./client.js";
 import { linkify, sources } from "./cite.js";
 import { confirmBody, secondsLeft } from "./confirm.js";
 import { cardDetails, cardTitle, formatDuration } from "./format.js";
-import { initialState, reduce } from "./state.js";
+import { initialState, reduce, shownAnswer } from "./state.js";
 // Built by `make site` (orchestrator/cmd/siteconfig) from SITE_NAME,
-// ASSISTANT_NAME and MESSAGES_FILE; shown as text only.
+// ASSISTANT_NAME, OWNER_NAME, OWNER_FIRST_NAME and MESSAGES_FILE; shown as
+// text only.
 import site from "../dist/config.js";
 
 const $ = (id) => document.getElementById(id);
@@ -90,16 +91,18 @@ function render() {
   els.thoughts.scrollTop = els.thoughts.scrollHeight;
 }
 
-// The answer with its citation links: built from text nodes and <a> elements
-// (href only from cite.js's safe-URL check), never from HTML. Rebuilt only
-// when the text or its citations change.
-let renderedAnswer = "";
+// The answer (or the welcome, before the first question) with its citation
+// links: built from text nodes and <a> elements (href only from cite.js's
+// safe-URL check), never from HTML. Rebuilt only when the text or its
+// citations change.
+let renderedAnswer = null;
 function renderAnswer() {
-  const key = state.answer + "\u0000" + state.citations.length;
+  const shown = shownAnswer(state);
+  const key = shown + "\u0000" + state.citations.length;
   if (key === renderedAnswer) return;
   renderedAnswer = key;
   els.answer.replaceChildren(
-    ...linkify(state.answer, state.citations).map((seg) => {
+    ...linkify(shown, state.citations).map((seg) => {
       if (seg.href === undefined) return document.createTextNode(seg.text);
       return link(seg.text, seg.href, seg.title);
     }),

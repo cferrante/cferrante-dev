@@ -133,3 +133,33 @@ func TestExampleFileHasEveryDefault(t *testing.T) {
 		}
 	}
 }
+
+// Only the welcome may name the owner (step 6.0a): it's the one message
+// written about the owner rather than about the page or the search.
+func TestOnlyTheWelcomeNamesTheOwner(t *testing.T) {
+	w, err := load(t, `{"welcome": "I'm the {assistant} at {site}. {owner} ({owner_first} to friends) built me."}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(w.Get("welcome"), "{owner_first}") {
+		t.Errorf("welcome = %q", w.Get("welcome"))
+	}
+	for name, tc := range map[string]struct{ content, want string }{
+		"owner in an error":    {`{"network": "{owner} is offline."}`, `{owner}`},
+		"first name in a noun": {`{"collection": "{owner_first}'s work"}`, `{owner_first}`},
+		"score in welcome":     {`{"welcome": "Top score {score}."}`, `{score}`},
+	} {
+		if _, err := load(t, tc.content); err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("%s: err = %v, want it to mention %s", name, err, tc.want)
+		}
+	}
+}
+
+// The default welcome names no one, so a site with no owner settings still
+// builds.
+func TestTheDefaultWelcomeNamesNoOne(t *testing.T) {
+	d := Default("welcome")
+	if d == "" || strings.Contains(d, "{owner") {
+		t.Errorf("default welcome = %q", d)
+	}
+}

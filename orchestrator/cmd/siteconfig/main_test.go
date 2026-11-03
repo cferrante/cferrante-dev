@@ -127,3 +127,34 @@ func TestRetrievalWordingReachesThePage(t *testing.T) {
 		t.Errorf("misspelt placeholder: err = %v, want the build stopped", err)
 	}
 }
+
+func TestOwnerNamesGoToThePage(t *testing.T) {
+	js, err := generate(
+		envOf(map[string]string{"OWNER_NAME": "Ada Lovelace", "OWNER_FIRST_NAME": "Ada", "MESSAGES_FILE": "m.json"}),
+		files(map[string]string{"m.json": `{"welcome": "Ask about {owner}; {owner_first} reads every message."}`}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	v := parse(t, js)
+	if v["ownerName"] != "Ada Lovelace" || v["ownerFirstName"] != "Ada" {
+		t.Errorf("config = %v", v)
+	}
+}
+
+// A welcome that names the owner with the name unset would show visitors
+// "Ask about {owner}" or a stand-in, so it stops the build instead.
+func TestAWelcomeNamingAnUnsetOwnerStopsTheBuild(t *testing.T) {
+	for name, tc := range map[string]struct {
+		env  map[string]string
+		want string
+	}{
+		"full name":  {map[string]string{"OWNER_FIRST_NAME": "Ada"}, "OWNER_NAME"},
+		"first name": {map[string]string{"OWNER_NAME": "Ada Lovelace"}, "OWNER_FIRST_NAME"},
+	} {
+		tc.env["MESSAGES_FILE"] = "m.json"
+		_, err := generate(envOf(tc.env), files(map[string]string{"m.json": `{"welcome": "{owner}, or {owner_first}."}`}))
+		if err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("%s: err = %v, want it to name %s", name, err, tc.want)
+		}
+	}
+}

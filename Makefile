@@ -21,7 +21,7 @@ tools: ## Fetch the pinned frontend tools (Tailwind, Deno) into build/tools, che
 css: tools ## Build web/dist/app.css with the Tailwind standalone CLI
 	build/tools/tailwindcss -i web/src/app.css -o web/dist/app.css --minify
 
-site: ## Write web/dist/config.js from SITE_NAME, ASSISTANT_NAME and MESSAGES_FILE (or .env)
+site: ## Write web/dist/config.js from SITE_NAME, ASSISTANT_NAME, OWNER_NAME, OWNER_FIRST_NAME and MESSAGES_FILE (or .env)
 	go run ./orchestrator/cmd/siteconfig
 
 css-check: css ## Check the CSS budget (< 15 KB gzipped) and required classes

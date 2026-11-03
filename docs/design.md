@@ -677,6 +677,14 @@ Plan Phase 4 builds it.
   prompt, because Phase 6's evals score answers against it; the prompt tells the model never
   to mention excerpts, numbering or searching to the visitor, and to say it doesn't have the
   information when the excerpts don't answer.
+- **Welcome (step 6.0a):** the answer area shows the `welcome` wording until the first
+  question or confirmation, then the answer replaces it like any other (the page shows one turn
+  at a time). It's page text, written by you and never by the model: it costs nothing, shows at
+  once, and never enters the conversation, since the page sends only the message (or
+  suggestion or action id) and the conversation id. `welcome` is the only key that may name the
+  owner: `{owner}` and `{owner_first}` come from `OWNER_NAME` and `OWNER_FIRST_NAME`, which have
+  no defaults, and `make site` stops if the welcome uses a name that isn't set. The default
+  welcome names no one. The site's own wording is the committed `web/messages.json`.
 - **Accessibility:** the answer region is `aria-live="polite"`; motion is off under
   [reduced motion](concepts.md#reduced-motion); everything works from the keyboard; the panes
   stack on narrow screens.
