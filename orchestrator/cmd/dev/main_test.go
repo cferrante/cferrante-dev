@@ -5,11 +5,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -380,10 +382,10 @@ func TestBedrockModelDefault(t *testing.T) {
 	}
 }
 
-type fakeTitan struct{ calls int }
+type fakeTitan struct{ calls atomic.Int64 } // atomic: the server's goroutine calls it
 
 func (f *fakeTitan) InvokeModel(_ context.Context, in *bedrockruntime.InvokeModelInput, _ ...func(*bedrockruntime.Options)) (*bedrockruntime.InvokeModelOutput, error) {
-	f.calls++
+	f.calls.Add(1)
 	v := make([]float32, 512)
 	v[len(in.Body)%512] = 1
 	raw, _ := json.Marshal(map[string]any{"embedding": v, "inputTextTokenCount": 7})
@@ -410,17 +412,18 @@ func TestDevIndexesWithTitan(t *testing.T) {
 		!strings.Contains(log.String(), "35 Titan tokens") {
 		t.Errorf("log = %q", log.String())
 	}
-	built := titan.calls
+	built := titan.calls.Load()
 	srv := httptest.NewServer(h)
 	defer srv.Close()
 	resp, err := http.Post(srv.URL+"/chat", "application/json", strings.NewReader(`{"message":"What is Alpha?"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
+	io.Copy(io.Discard, resp.Body) // the whole turn, so the count is final
 	resp.Body.Close()
 	// The question is embedded with Titan too: one more call.
-	if titan.calls != built+1 {
-		t.Errorf("Titan calls: %d to build, %d after one question", built, titan.calls)
+	if got := titan.calls.Load(); got != built+1 {
+		t.Errorf("Titan calls: %d to build, %d after one question", built, got)
 	}
 }
 
