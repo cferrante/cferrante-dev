@@ -1,7 +1,8 @@
 // Command indexer builds the retrieval index from the Markdown corpus
-// (design §5, plan step 3.4).
+// (design §5, plan steps 3.4 and 5.3). It reads the same variables as
+// `make dev`, from the shell or a git-ignored .env, and a flag overrides them:
 //
-//	go run ./orchestrator/cmd/indexer -corpus corpus -out build/corpus.idx
+//	go run ./orchestrator/cmd/indexer -corpus corpus/public:corpus/private -embedder titan
 package main
 
 import (
@@ -11,56 +12,70 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"time"
 
-	"github.com/cferrante/cferrante-dev/orchestrator/corpus"
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime"
+	cfg "github.com/cferrante/cferrante-dev/orchestrator/config"
 	"github.com/cferrante/cferrante-dev/orchestrator/embed"
+	"github.com/cferrante/cferrante-dev/orchestrator/indexing"
 	"github.com/cferrante/cferrante-dev/orchestrator/retrieval"
 )
 
 func main() {
-	if err := run(os.Args[1:], os.Stdout); err != nil {
+	getenv, err := cfg.WithDotEnv(".env", os.Getenv)
+	if err == nil {
+		err = run(os.Args[1:], getenv, os.Stdout, bedrockClient)
+	}
+	if err != nil {
 		fmt.Fprintln(os.Stderr, "indexer:", err)
 		os.Exit(1)
 	}
 }
 
-func run(args []string, out io.Writer) error {
+// bedrockClient creates the Bedrock client Titan uses, through the AWS profile.
+func bedrockClient(profile, region string) (embed.Invoker, error) {
+	awsCfg, err := awsconfig.LoadDefaultConfig(context.Background(),
+		awsconfig.WithSharedConfigProfile(profile), awsconfig.WithRegion(region))
+	if err != nil {
+		return nil, err
+	}
+	return bedrockruntime.NewFromConfig(awsCfg), nil
+}
+
+func run(args []string, getenv cfg.Getenv, out io.Writer, newBedrock func(profile, region string) (embed.Invoker, error)) error {
+	env := cfg.New(getenv)
 	fs := flag.NewFlagSet("indexer", flag.ContinueOnError)
-	dir := fs.String("corpus", "", "directory of Markdown files (required)")
-	path := fs.String("out", "", "index file to write; the sidecar goes to <out>.json (required)")
-	target := fs.Int("target", 1000, "preferred chunk size in bytes")
-	embedder := fs.String("embedder", "hash", "embedding model: hash (no download; for tests and offline use)")
-	dim := fs.Int("dim", 256, "vector size for the hash embedder")
+	s := indexing.Flags(fs, env)
+	profile := fs.String("aws-profile", env.String("AWS_PROFILE", "cferrante-dev-admin"), "AWS profile for Titan [AWS_PROFILE]")
+	region := fs.String("aws-region", env.String("AWS_REGION", "us-east-1"), "AWS region [AWS_REGION]")
+	if err := env.Err(); err != nil {
+		return err
+	}
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	if *dir == "" || *path == "" {
-		return errors.New("-corpus and -out are required")
-	}
-	var e embed.Embedder
-	switch *embedder {
-	case "hash":
-		e = embed.Hash{D: *dim}
-	default:
-		return fmt.Errorf("unknown -embedder %q", *embedder)
-	}
-	chunks, err := corpus.Chunker{Target: *target}.ReadDir(*dir)
+	e, err := s.NewEmbedder(func() (embed.Invoker, error) {
+		if newBedrock == nil {
+			return nil, fmt.Errorf("no Bedrock client")
+		}
+		return newBedrock(*profile, *region)
+	})
 	if err != nil {
 		return err
 	}
-	if len(chunks) == 0 {
-		return fmt.Errorf("no chunks: %s has no Markdown files with content", *dir)
-	}
-	if err := retrieval.Build(context.Background(), chunks, e, *path); err != nil {
+	st, err := s.Build(context.Background(), e)
+	if err != nil {
+		if s.Embedder == "titan" && errors.Is(err, retrieval.ErrEmbed) {
+			return fmt.Errorf("%w (if your AWS session has expired: aws sso login --profile %s)", err, *profile)
+		}
 		return err
 	}
-	invitee := 0
-	for _, c := range chunks {
-		if c.Access == "invitee" {
-			invitee++
-		}
+	fmt.Fprintf(out, "indexed %d chunks (%d public, %d invitee) with %s -> %s in %v",
+		st.Chunks, st.Chunks-st.Invitee, st.Invitee, e.Model(), s.IndexPath, st.Elapsed.Round(time.Millisecond))
+	if st.Tokens > 0 {
+		fmt.Fprintf(out, ", %d Titan tokens", st.Tokens)
 	}
-	fmt.Fprintf(out, "indexed %d chunks (%d public, %d invitee) with %s -> %s\n",
-		len(chunks), len(chunks)-invitee, invitee, e.Model(), *path)
+	fmt.Fprintln(out)
 	return nil
 }

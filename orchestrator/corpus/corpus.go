@@ -257,32 +257,58 @@ func (c Chunker) Split(d Document) []Chunk {
 	return out
 }
 
-// ReadDir parses and splits every .md file in dir, in name order, and checks
-// that chunk ids are unique across the corpus.
-func (c Chunker) ReadDir(dir string) ([]Chunk, error) {
-	names, err := filepath.Glob(filepath.Join(dir, "*.md"))
-	if err != nil {
-		return nil, err
-	}
-	sort.Strings(names)
+// ReadDir parses and splits every .md file in dir; see ReadDirs.
+func (c Chunker) ReadDir(dir string) ([]Chunk, error) { return c.ReadDirs([]string{dir}) }
+
+// ReadDirs parses and splits every .md file in each folder, folders in the
+// order given and files in name order, and checks that chunk ids are unique
+// across all of them. A missing folder is an error: filepath.Glob would
+// return no files, so a typo in CORPUS_DIRS would quietly drop documents.
+func (c Chunker) ReadDirs(dirs []string) ([]Chunk, error) {
 	var out []Chunk
 	seen := map[string]string{}
-	for _, name := range names {
-		content, err := os.ReadFile(name)
+	for _, dir := range dirs {
+		info, err := os.Stat(dir)
+		if err != nil {
+			return nil, fmt.Errorf("corpus folder: %w", err)
+		}
+		if !info.IsDir() {
+			return nil, fmt.Errorf("corpus folder %s is not a directory", dir)
+		}
+		names, err := filepath.Glob(filepath.Join(dir, "*.md"))
 		if err != nil {
 			return nil, err
 		}
-		d, err := Parse(name, content)
-		if err != nil {
-			return nil, fmt.Errorf("%s: %w", name, err)
-		}
-		for _, ch := range c.Split(d) {
-			if prev, dup := seen[ch.ID]; dup {
-				return nil, fmt.Errorf("duplicate chunk id %q in %s (also in %s)", ch.ID, name, prev)
+		sort.Strings(names)
+		for _, name := range names {
+			content, err := os.ReadFile(name)
+			if err != nil {
+				return nil, err
 			}
-			seen[ch.ID] = name
-			out = append(out, ch)
+			d, err := Parse(name, content)
+			if err != nil {
+				return nil, fmt.Errorf("%s: %w", name, err)
+			}
+			for _, ch := range c.Split(d) {
+				if prev, dup := seen[ch.ID]; dup {
+					return nil, fmt.Errorf("duplicate chunk id %q in %s (also in %s)", ch.ID, name, prev)
+				}
+				seen[ch.ID] = name
+				out = append(out, ch)
+			}
 		}
 	}
 	return out, nil
+}
+
+// SplitDirs splits a CORPUS_DIRS value ("corpus/public:corpus/private") at
+// colons, like PATH, dropping blanks.
+func SplitDirs(s string) []string {
+	var out []string
+	for _, d := range strings.Split(s, ":") {
+		if d = strings.TrimSpace(d); d != "" {
+			out = append(out, d)
+		}
+	}
+	return out
 }

@@ -30,5 +30,9 @@ coverage.*
 # config.env.example is the committed template.
 /infra/bootstrap/aws/config.env
 
+# Invitee-only documents: a clone of the private corpus repo (corpus/README.md).
+# make corpus-check fails if anything here is committed with git add -f.
+/corpus/private/
+
 # Spike build output
 /spikes/*/build/

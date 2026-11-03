@@ -77,6 +77,14 @@ func (e *Env) Duration(name string, def time.Duration) time.Duration {
 	return d
 }
 
+// Renamed fails if the old name of a variable is still set, so a stale .env
+// stops startup with the fix instead of being quietly ignored.
+func (e *Env) Renamed(old, now string) {
+	if e.get(old) != "" {
+		e.fail(fmt.Errorf("%s was renamed %s: rename it in your .env or shell", old, now))
+	}
+}
+
 // Err is the first invalid variable, if any.
 func (e *Env) Err() error { return e.err }
 

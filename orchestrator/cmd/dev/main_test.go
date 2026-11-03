@@ -5,15 +5,19 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime"
+	"github.com/cferrante/cferrante-dev/orchestrator/embed"
+	"github.com/cferrante/cferrante-dev/orchestrator/indexing"
 	"github.com/cferrante/cferrante-dev/orchestrator/model"
 	"github.com/cferrante/cferrante-dev/orchestrator/model/bedrock"
 	"github.com/cferrante/cferrante-dev/orchestrator/model/fake"
@@ -40,7 +44,7 @@ func TestSetupServesChatOverTheIndexedFixture(t *testing.T) {
 		"-index", filepath.Join(t.TempDir(), "dev.idx")}, noEnv)
 	m := &fake.Model{Name: "ollama", Events: []model.Event{{Kind: model.Text, Text: "Alpha is Go [1]."}}}
 	var log bytes.Buffer
-	h, cleanup, err := setup(context.Background(), c, m, &log)
+	h, cleanup, err := setup(context.Background(), c, m, &log, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,19 +79,19 @@ func TestSetupServesChatOverTheIndexedFixture(t *testing.T) {
 
 func TestUnknownEmbedder(t *testing.T) {
 	c, _ := parse([]string{"-embedder", "magic"}, noEnv)
-	if _, _, err := setup(context.Background(), c, &fake.Model{}, &bytes.Buffer{}); err == nil {
+	if _, _, err := setup(context.Background(), c, &fake.Model{}, &bytes.Buffer{}, nil); err == nil {
 		t.Error("want an error")
 	}
 }
 
 var allEnv = map[string]string{
-	"LISTEN_ADDR": "127.0.0.1:9999", "CORPUS_DIR": "/c", "INDEX_PATH": "/i.idx",
+	"LISTEN_ADDR": "127.0.0.1:9999", "CORPUS_DIRS": "/c:/d", "INDEX_PATH": "/i.idx",
 	"OLLAMA_BASE_URL": "http://gpu-box:11434", "EMBEDDER": "hash", "EMBED_MODEL": "mxbai-embed-large",
 	"EMBED_DIM": "1024", "CHAT_MODEL": "llama3.1", "REASONING_EFFORT": "medium", "DEV_INVITEE": "true",
 	"CONTACT_OPTIONS": "Use the form.", "AVAILABILITY": "Tue–Thu", "TURN_DEADLINE": "90s",
 	"WEB_DIR": "/site", "ASSISTANT_NAME": "Concierge", "SUGGESTED_FILE": "/s.json",
 	"CHAT_PROVIDER": "groq", "GROQ_MODEL": "openai/gpt-oss-20b", "GROQ_KEY_PARAM": "/k", "AWS_PROFILE": "p", "AWS_REGION": "eu-west-1",
-	"BEDROCK_MODEL": "us.amazon.nova-micro-v1:0",
+	"BEDROCK_MODEL": "us.amazon.nova-micro-v1:0", "TITAN_MODEL": "amazon.titan-x", "CHUNK_TARGET": "600",
 }
 
 func TestEnvironmentSetsEveryOption(t *testing.T) {
@@ -95,8 +99,8 @@ func TestEnvironmentSetsEveryOption(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := config{addr: "127.0.0.1:9999", corpusDir: "/c", index: "/i.idx", ollamaURL: "http://gpu-box:11434",
-		embedder: "hash", embedModel: "mxbai-embed-large", embedDim: 1024, model: "llama3.1", effort: "medium", invitee: true,
+	want := config{addr: "127.0.0.1:9999", idx: indexing.Settings{CorpusDirs: "/c:/d", IndexPath: "/i.idx", ChunkTarget: 600,
+		Embedder: "hash", OllamaURL: "http://gpu-box:11434", OllamaModel: "mxbai-embed-large", Dim: 1024, TitanModel: "amazon.titan-x"}, model: "llama3.1", effort: "medium", invitee: true,
 		contact: "Use the form.", availability: "Tue–Thu", deadline: 90 * time.Second, webDir: "/site", assistant: "Concierge", suggestedFile: "/s.json",
 		provider: "groq", groqModel: "openai/gpt-oss-20b", groqKeyParam: "/k", awsProfile: "p", awsRegion: "eu-west-1", bedrockModel: "us.amazon.nova-micro-v1:0"}
 	if c != want {
@@ -149,7 +153,7 @@ func TestOllamaSettingsReachTheEmbedder(t *testing.T) {
 		t.Fatal(err)
 	}
 	var log bytes.Buffer
-	_, cleanup, err := setup(context.Background(), c, &fake.Model{}, &log)
+	_, cleanup, err := setup(context.Background(), c, &fake.Model{}, &log, nil)
 	if err != nil {
 		t.Fatalf("setup: %v", err)
 	}
@@ -167,7 +171,7 @@ func TestDevOffersToolsAndLogsConfirmedActions(t *testing.T) {
 		{{Kind: model.Text, Text: "Please confirm."}},
 	}}
 	var log bytes.Buffer
-	h, cleanup, err := setup(context.Background(), c, m, &log)
+	h, cleanup, err := setup(context.Background(), c, m, &log, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -217,7 +221,7 @@ func TestDevServesThePageWithItsCSP(t *testing.T) {
 	os.WriteFile(filepath.Join(web, "index.html"), []byte("<title>receptionist</title>"), 0o644)
 	c, _ := parse([]string{"-embedder", "hash", "-corpus", "../../corpus/testdata/corpus", "-suggested", "../../corpus/testdata/suggested.json",
 		"-index", filepath.Join(t.TempDir(), "dev.idx")}, envOf(map[string]string{"WEB_DIR": web}))
-	h, cleanup, err := setup(context.Background(), c, &fake.Model{}, &bytes.Buffer{})
+	h, cleanup, err := setup(context.Background(), c, &fake.Model{}, &bytes.Buffer{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -242,7 +246,7 @@ func TestDevServesSuggestedQuestionsFromTheFile(t *testing.T) {
 		"-index", filepath.Join(t.TempDir(), "dev.idx")},
 		envOf(map[string]string{"SUGGESTED_FILE": "../../corpus/testdata/suggested.json"}))
 	m := &fake.Model{Name: "ollama"}
-	h, cleanup, err := setup(context.Background(), c, m, &bytes.Buffer{})
+	h, cleanup, err := setup(context.Background(), c, m, &bytes.Buffer{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -277,7 +281,7 @@ func TestDevRefusesABadSuggestionsFile(t *testing.T) {
 	os.WriteFile(bad, []byte(`[{"id":"x","question":"q","answer":"a [1]","citations":["private-notes#rates"],"access":"public"}]`), 0o600)
 	c, _ := parse([]string{"-embedder", "hash", "-corpus", "../../corpus/testdata/corpus",
 		"-index", filepath.Join(t.TempDir(), "dev.idx")}, envOf(map[string]string{"SUGGESTED_FILE": bad}))
-	if _, _, err := setup(context.Background(), c, &fake.Model{}, &bytes.Buffer{}); err == nil || !strings.Contains(err.Error(), "invitee-only") {
+	if _, _, err := setup(context.Background(), c, &fake.Model{}, &bytes.Buffer{}, nil); err == nil || !strings.Contains(err.Error(), "invitee-only") {
 		t.Errorf("err = %v, want the leak refused", err)
 	}
 }
@@ -375,5 +379,78 @@ func TestBedrockModelDefault(t *testing.T) {
 	c, _ := parse(nil, noEnv)
 	if c.bedrockModel != "us.amazon.nova-lite-v1:0" {
 		t.Errorf("bedrockModel = %q", c.bedrockModel)
+	}
+}
+
+type fakeTitan struct{ calls atomic.Int64 } // atomic: the server's goroutine calls it
+
+func (f *fakeTitan) InvokeModel(_ context.Context, in *bedrockruntime.InvokeModelInput, _ ...func(*bedrockruntime.Options)) (*bedrockruntime.InvokeModelOutput, error) {
+	f.calls.Add(1)
+	v := make([]float32, 512)
+	v[len(in.Body)%512] = 1
+	raw, _ := json.Marshal(map[string]any{"embedding": v, "inputTextTokenCount": 7})
+	return &bedrockruntime.InvokeModelOutput{Body: raw}, nil
+}
+
+// EMBEDDER=titan builds and serves the index with Titan, through the client
+// make dev creates from the AWS profile.
+func TestDevIndexesWithTitan(t *testing.T) {
+	c, err := parse([]string{"-corpus", "../../corpus/testdata/corpus", "-suggested", "", "-index", filepath.Join(t.TempDir(), "dev.idx")},
+		envOf(map[string]string{"EMBEDDER": "titan"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	titan := &fakeTitan{}
+	var log bytes.Buffer
+	h, cleanup, err := setup(context.Background(), c, &fake.Model{Name: "ollama", Events: []model.Event{{Kind: model.Text, Text: "Hi."}}}, &log,
+		func() (embed.Invoker, error) { return titan, nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	if !strings.Contains(log.String(), "indexed 5 chunks") || !strings.Contains(log.String(), "bedrock/amazon.titan-embed-text-v2:0/512") ||
+		!strings.Contains(log.String(), "35 Titan tokens") {
+		t.Errorf("log = %q", log.String())
+	}
+	built := titan.calls.Load()
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+	resp, err := http.Post(srv.URL+"/chat", "application/json", strings.NewReader(`{"message":"What is Alpha?"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	io.Copy(io.Discard, resp.Body) // the whole turn, so the count is final
+	resp.Body.Close()
+	// The question is embedded with Titan too: one more call.
+	if got := titan.calls.Load(); got != built+1 {
+		t.Errorf("Titan calls: %d to build, %d after one question", built, got)
+	}
+}
+
+func TestAFailedTitanBuildExplainsHowToLogIn(t *testing.T) {
+	c, _ := parse([]string{"-corpus", "../../corpus/testdata/corpus", "-index", filepath.Join(t.TempDir(), "dev.idx")}, envOf(map[string]string{"EMBEDDER": "titan"}))
+	_, _, err := setup(context.Background(), c, &fake.Model{}, &bytes.Buffer{},
+		func() (embed.Invoker, error) { return failingTitan{}, nil })
+	if err == nil || !strings.Contains(err.Error(), "ExpiredToken") || !strings.Contains(err.Error(), "aws sso login --profile cferrante-dev-admin") || strings.Contains(err.Error(), "Ollama") {
+		t.Errorf("err = %v, want the login command and no mention of Ollama", err)
+	}
+}
+
+type failingTitan struct{}
+
+func (failingTitan) InvokeModel(context.Context, *bedrockruntime.InvokeModelInput, ...func(*bedrockruntime.Options)) (*bedrockruntime.InvokeModelOutput, error) {
+	return nil, errors.New("ExpiredToken")
+}
+
+// Only an embedding failure points at Ollama or AWS; a corpus mistake is
+// reported as itself.
+func TestACorpusErrorDoesNotBlameTheEmbedder(t *testing.T) {
+	for _, embedder := range []string{"ollama", "titan"} {
+		c, _ := parse([]string{"-corpus", filepath.Join(t.TempDir(), "missing"), "-index", filepath.Join(t.TempDir(), "dev.idx")},
+			envOf(map[string]string{"EMBEDDER": embedder}))
+		_, _, err := setup(context.Background(), c, &fake.Model{}, &bytes.Buffer{}, func() (embed.Invoker, error) { return &fakeTitan{}, nil })
+		if err == nil || !strings.Contains(err.Error(), "missing") || strings.Contains(err.Error(), "Ollama") || strings.Contains(err.Error(), "sso") {
+			t.Errorf("%s: err = %v, want the missing folder without an Ollama or AWS hint", embedder, err)
+		}
 	}
 }

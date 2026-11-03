@@ -7,7 +7,7 @@ GO_PKGS := $(shell go list ./... 2>/dev/null)
 SH_FILES := $(shell find . -name '*.sh' -not -path './.git/*')
 SHELLCHECK ?= shellcheck
 
-.PHONY: help tools css site css-check jstest test engine-test bench-engine bench-engine-scale bench-go dev smoke-groq smoke-bedrock lint fmt docs-check
+.PHONY: help tools css site css-check jstest test corpus-check engine-test bench-engine bench-engine-scale bench-go dev smoke-groq smoke-bedrock smoke-titan lint fmt docs-check
 
 ENGINE_BUILD := build/engine
 ENGINE_RELEASE := build/engine-release
@@ -30,7 +30,7 @@ css-check: css ## Check the CSS budget (< 15 KB gzipped) and required classes
 jstest: tools ## Run the frontend's JS tests under Deno with no permissions
 	build/tools/deno test --no-prompt web/js/
 
-test: engine-test css-check jstest ## Run all tests
+test: engine-test css-check jstest corpus-check ## Run all tests
 ifneq ($(GO_PKGS),)
 	go test -race ./...
 else
@@ -39,6 +39,9 @@ endif
 	infra/bootstrap/aws/secret_test.sh
 	scripts/fetch-tools_test.sh
 	scripts/check-css_test.sh
+
+corpus-check: ## Fail if a tracked file would publish invitee-only documents
+	go run ./orchestrator/cmd/corpuscheck
 
 engine-test: ## Build and run the C++ engine tests with ASan and UBSan
 	cmake -S engine -B $(ENGINE_BUILD) -DCMAKE_BUILD_TYPE=Debug -DRAG_SANITIZE=ON >/dev/null
@@ -69,6 +72,9 @@ smoke-groq: ## Call the real Groq API once (needs aws sso login; spends free-tie
 
 smoke-bedrock: ## Call the real Bedrock API once (needs aws sso login; about $0.0001)
 	LIVE_BEDROCK=1 go test -count=1 -run TestLiveBedrock -v ./orchestrator/model/bedrock/
+
+smoke-titan: ## Embed three texts with the real Titan v2 (needs aws sso login; far below $0.0001)
+	LIVE_TITAN=1 go test -count=1 -run TestLiveTitan -v ./orchestrator/embed/
 
 lint: tools ## Check formatting, run go vet, shellcheck and deno lint
 	@unformatted=$$(gofmt -l .); \

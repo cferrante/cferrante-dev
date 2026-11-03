@@ -157,3 +157,58 @@ func TestCodeBlocksStayWhole(t *testing.T) {
 		t.Errorf("chunks = %q, want the code block whole", texts(got))
 	}
 }
+
+func writeDoc(t *testing.T, dir, name, access, body string) {
+	t.Helper()
+	content := "---\ntitle: " + name + "\nurl: /" + name + "\naccess: " + access + "\n---\n" + body
+	if err := os.WriteFile(filepath.Join(dir, name+".md"), []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSeveralFoldersIndexTogether(t *testing.T) {
+	public, private := t.TempDir(), t.TempDir()
+	writeDoc(t, public, "about", "public", "## Me\n\nPublic text.")
+	writeDoc(t, private, "rates", "invitee", "## Rates\n\nPrivate text.")
+	got, err := Chunker{Target: 1000}.ReadDirs([]string{public, private})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ids []string
+	for _, c := range got {
+		ids = append(ids, c.ID+" "+c.Access)
+	}
+	if want := []string{"about#me public", "rates#rates invitee"}; !slices.Equal(ids, want) {
+		t.Errorf("chunks = %v, want %v", ids, want)
+	}
+}
+
+func TestDuplicateIDsAcrossFoldersAreAnError(t *testing.T) {
+	a, b := t.TempDir(), t.TempDir()
+	writeDoc(t, a, "same", "public", "## X\n\nOne.")
+	writeDoc(t, b, "same", "invitee", "## X\n\nTwo.")
+	_, err := Chunker{Target: 1000}.ReadDirs([]string{a, b})
+	if err == nil || !strings.Contains(err.Error(), `"same#x"`) || !strings.Contains(err.Error(), a) || !strings.Contains(err.Error(), b) {
+		t.Errorf("err = %v, want a duplicate id error naming both files", err)
+	}
+}
+
+func TestAMissingFolderIsAnError(t *testing.T) {
+	// A typo in CORPUS_DIRS must not silently leave documents out.
+	missing := filepath.Join(t.TempDir(), "privat")
+	if _, err := (Chunker{Target: 1000}).ReadDirs([]string{t.TempDir(), missing}); err == nil || !strings.Contains(err.Error(), missing) {
+		t.Errorf("err = %v, want an error naming %s", err, missing)
+	}
+}
+
+func TestSplitDirs(t *testing.T) {
+	for in, want := range map[string][]string{
+		"corpus/public":                {"corpus/public"},
+		"corpus/public:corpus/private": {"corpus/public", "corpus/private"},
+		" a : b :":                     {"a", "b"},
+	} {
+		if got := SplitDirs(in); !slices.Equal(got, want) {
+			t.Errorf("SplitDirs(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
