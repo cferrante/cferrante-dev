@@ -1,0 +1,3 @@
+{
+  "welcome": "Welcome to HQ! ☕ I'm the {assistant}, your automated front desk. Before we dive into the code or architecture, {owner} always tells me: “Every great engineering solution starts by understanding the user's friction.”\n\nSo, what brings you by today? Tell me your biggest team bottleneck or engineering challenge, and let's see how {owner_first}'s background fits."
+}
