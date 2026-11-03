@@ -155,8 +155,9 @@ prompt prefixes (gpt-oss models; 50% off cached input tokens, which also don't c
 limits; entries live 2 hours unused). Our part is to keep the prefix stable: the system prompt is
 the first message and holds no per-turn text (no time, ids or excerpts), tools follow in registry
 order, then history, and the question with its excerpts comes last; a test pins this. Hits aren't
-guaranteed: measured live at about 500 input tokens, 0 of 3 repeats hit (spike 1.5: 7 of 20 second
-turns). Cached tokens appear on the inference card when there are any. **No Bedrock cache point:**
+guaranteed: on 2026-11-03, 0 of 3 repeats hit at about 500 input tokens and 0 of 4 at 1,460, with
+no `prompt_tokens_details` in the usage at all (spike 1.5, from Lambda: 7 of 20 second turns).
+`make measure-groq-cache` measures it again; it logs rather than fails. Cached tokens appear on the inference card when there are any. **No Bedrock cache point:**
 Nova Lite accepts explicit cache points only in `system` and `messages` (not after tools), needs at
 least 1,000 tokens before each, and caches implicitly anyway, unreported; so the planned
 `CacheAfterTools` field was removed.
