@@ -23,6 +23,7 @@ import (
 	"time"
 
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	"github.com/cferrante/cferrante-dev/orchestrator/agent"
 	"github.com/cferrante/cferrante-dev/orchestrator/auth"
@@ -31,6 +32,7 @@ import (
 	"github.com/cferrante/cferrante-dev/orchestrator/corpus"
 	"github.com/cferrante/cferrante-dev/orchestrator/embed"
 	"github.com/cferrante/cferrante-dev/orchestrator/model"
+	"github.com/cferrante/cferrante-dev/orchestrator/model/bedrock"
 	"github.com/cferrante/cferrante-dev/orchestrator/model/oai"
 	"github.com/cferrante/cferrante-dev/orchestrator/retrieval"
 	"github.com/cferrante/cferrante-dev/orchestrator/secrets"
@@ -50,7 +52,8 @@ type config struct {
 	assistant                           string        // the assistant's name, in the system prompt
 	suggestedFile                       string        // stored answers for the suggestion chips (design §14)
 	provider, groqModel, groqKeyParam   string        // CHAT_PROVIDER: ollama | groq
-	awsProfile, awsRegion               string        // for SSM (and Bedrock from step 5.2)
+	awsProfile, awsRegion               string        // for SSM and Bedrock
+	bedrockModel                        string        // the fallback when CHAT_PROVIDER=groq
 }
 
 // parse reads the configuration. Every option has an environment variable
@@ -72,6 +75,7 @@ func parse(args []string, getenv cfg.Getenv) (config, error) {
 	fs.StringVar(&c.groqModel, "groq-model", env.String("GROQ_MODEL", "openai/gpt-oss-120b"), "Groq model [GROQ_MODEL]")
 	fs.StringVar(&c.groqKeyParam, "groq-key-param", env.String("GROQ_KEY_PARAM", "/cferrante-dev/groq-api-key"), "SSM SecureString holding the Groq key [GROQ_KEY_PARAM]")
 	fs.StringVar(&c.awsProfile, "aws-profile", env.String("AWS_PROFILE", "cferrante-dev-admin"), "AWS profile for SSM [AWS_PROFILE]")
+	fs.StringVar(&c.bedrockModel, "bedrock-model", env.String("BEDROCK_MODEL", "us.amazon.nova-lite-v1:0"), "Bedrock fallback model when using Groq [BEDROCK_MODEL]")
 	fs.StringVar(&c.awsRegion, "aws-region", env.String("AWS_REGION", "us-east-1"), "AWS region [AWS_REGION]")
 	fs.BoolVar(&c.invitee, "invitee", env.Bool("DEV_INVITEE", false), "act as an invitee, who sees private chunks [DEV_INVITEE]")
 	fs.StringVar(&c.contact, "contact", env.String("CONTACT_OPTIONS", "Invitees can send a message through this chat."), "get_contact_options answer [CONTACT_OPTIONS]")
@@ -183,7 +187,7 @@ func main() {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	m, err := chatModel(ctx, c, ssmSecret(c))
+	m, err := chatModel(ctx, c, ssmSecret(c), nil)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -202,7 +206,7 @@ func main() {
 	fmt.Printf("open http://%s/ in a browser to talk to the %s\n", c.addr, c.assistant)
 	where := fmt.Sprintf("model %s via Ollama at %s", c.model, c.ollamaURL)
 	if c.provider == "groq" {
-		where = fmt.Sprintf("model %s via Groq", c.groqModel)
+		where = fmt.Sprintf("model %s via Groq, falling back to %s on Bedrock", c.groqModel, c.bedrockModel)
 	}
 	effort := c.effort
 	if effort == "" {
@@ -217,15 +221,25 @@ func main() {
 
 // chatModel builds the model for c.provider; secret reads a parameter from
 // SSM (stubbed in tests).
-func chatModel(ctx context.Context, c config, secret func(context.Context, string) (string, error)) (model.Model, error) {
+func chatModel(ctx context.Context, c config, secret func(context.Context, string) (string, error), br bedrock.Streamer) (model.Model, error) {
 	if c.provider != "groq" {
 		return &oai.Client{Provider: "ollama", BaseURL: c.ollamaURL + "/v1", Model: c.model, ReasoningEffort: c.effort}, nil
 	}
 	key, err := secret(ctx, c.groqKeyParam)
 	if err != nil {
-		return nil, fmt.Errorf("%w (is your AWS session current? run: aws sso login --profile %s)", err, c.awsProfile)
+		return nil, fmt.Errorf("%w (if your AWS session has expired: aws sso login --profile %s)", err, c.awsProfile)
 	}
-	return &oai.Client{Provider: "groq", BaseURL: oai.GroqBaseURL, APIKey: key, Model: c.groqModel, ReasoningEffort: c.effort}, nil
+	groq := &oai.Client{Provider: "groq", BaseURL: oai.GroqBaseURL, APIKey: key, Model: c.groqModel, ReasoningEffort: c.effort}
+	if br == nil {
+		awsCfg, err := awsconfig.LoadDefaultConfig(ctx,
+			awsconfig.WithSharedConfigProfile(c.awsProfile), awsconfig.WithRegion(c.awsRegion))
+		if err != nil {
+			return nil, err
+		}
+		br = bedrock.SDK{Client: bedrockruntime.NewFromConfig(awsCfg)}
+	}
+	// Groq answers; Bedrock takes over only before Groq's first token (design §4).
+	return &model.Router{Primary: groq, Fallback: &bedrock.Client{API: br, Model: c.bedrockModel}, Clock: clock.Real{}}, nil
 }
 
 // ssmSecret reads parameters through the AWS profile, creating the client on

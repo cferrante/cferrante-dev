@@ -13,7 +13,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime"
 	"github.com/cferrante/cferrante-dev/orchestrator/model"
+	"github.com/cferrante/cferrante-dev/orchestrator/model/bedrock"
 	"github.com/cferrante/cferrante-dev/orchestrator/model/fake"
 	"github.com/cferrante/cferrante-dev/orchestrator/model/oai"
 )
@@ -85,6 +87,7 @@ var allEnv = map[string]string{
 	"CONTACT_OPTIONS": "Use the form.", "AVAILABILITY": "Tue–Thu", "TURN_DEADLINE": "90s",
 	"WEB_DIR": "/site", "ASSISTANT_NAME": "Concierge", "SUGGESTED_FILE": "/s.json",
 	"CHAT_PROVIDER": "groq", "GROQ_MODEL": "openai/gpt-oss-20b", "GROQ_KEY_PARAM": "/k", "AWS_PROFILE": "p", "AWS_REGION": "eu-west-1",
+	"BEDROCK_MODEL": "us.amazon.nova-micro-v1:0",
 }
 
 func TestEnvironmentSetsEveryOption(t *testing.T) {
@@ -95,7 +98,7 @@ func TestEnvironmentSetsEveryOption(t *testing.T) {
 	want := config{addr: "127.0.0.1:9999", corpusDir: "/c", index: "/i.idx", ollamaURL: "http://gpu-box:11434",
 		embedder: "hash", embedModel: "mxbai-embed-large", embedDim: 1024, model: "llama3.1", effort: "medium", invitee: true,
 		contact: "Use the form.", availability: "Tue–Thu", deadline: 90 * time.Second, webDir: "/site", assistant: "Concierge", suggestedFile: "/s.json",
-		provider: "groq", groqModel: "openai/gpt-oss-20b", groqKeyParam: "/k", awsProfile: "p", awsRegion: "eu-west-1"}
+		provider: "groq", groqModel: "openai/gpt-oss-20b", groqKeyParam: "/k", awsProfile: "p", awsRegion: "eu-west-1", bedrockModel: "us.amazon.nova-micro-v1:0"}
 	if c != want {
 		t.Errorf("config\n got %+v\nwant %+v", c, want)
 	}
@@ -324,12 +327,20 @@ func TestChatModelForEachProvider(t *testing.T) {
 		asked = name
 		return "test-value-not-a-real-key", nil
 	}
-	c, _ := parse(nil, envOf(map[string]string{"CHAT_PROVIDER": "groq"}))
-	m, err := chatModel(context.Background(), c, secret)
+	c, _ := parse(nil, envOf(map[string]string{"CHAT_PROVIDER": "groq", "BEDROCK_MODEL": "us.amazon.nova-micro-v1:0"}))
+	m, err := chatModel(context.Background(), c, secret, fakeStreamer{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	g, ok := m.(*oai.Client)
+	// Groq answers; Bedrock takes over before the first token if Groq fails.
+	r, ok := m.(*model.Router)
+	if !ok {
+		t.Fatalf("groq model = %T, want a router", m)
+	}
+	if b, ok := r.Fallback.(*bedrock.Client); !ok || b.Model != "us.amazon.nova-micro-v1:0" {
+		t.Errorf("fallback = %+v", r.Fallback)
+	}
+	g, ok := r.Primary.(*oai.Client)
 	if !ok || g.Provider != "groq" || g.BaseURL != oai.GroqBaseURL || g.Model != "openai/gpt-oss-120b" ||
 		g.APIKey != "test-value-not-a-real-key" || asked != "/cferrante-dev/groq-api-key" {
 		t.Errorf("groq model = %+v, asked %q", m, asked)
@@ -337,7 +348,7 @@ func TestChatModelForEachProvider(t *testing.T) {
 
 	asked = ""
 	o, _ := parse(nil, envOf(map[string]string{"OLLAMA_BASE_URL": "http://gpu:11434"}))
-	m, err = chatModel(context.Background(), o, secret)
+	m, err = chatModel(context.Background(), o, secret, fakeStreamer{})
 	if g, ok := m.(*oai.Client); err != nil || !ok || g.Provider != "ollama" || g.BaseURL != "http://gpu:11434/v1" || g.APIKey != "" || asked != "" {
 		t.Errorf("ollama model = %+v, err %v; asked for a secret: %q", m, err, asked)
 	}
@@ -348,8 +359,21 @@ func TestAnUnreadableGroqKeyExplainsHowToLogIn(t *testing.T) {
 		return "", errors.New("reading SSM parameter /cferrante-dev/groq-api-key: token has expired")
 	}
 	c, _ := parse(nil, envOf(map[string]string{"CHAT_PROVIDER": "groq"}))
-	_, err := chatModel(context.Background(), c, failing)
+	_, err := chatModel(context.Background(), c, failing, fakeStreamer{})
 	if err == nil || !strings.Contains(err.Error(), "aws sso login --profile cferrante-dev-admin") {
 		t.Errorf("err = %v, want the login command", err)
+	}
+}
+
+type fakeStreamer struct{}
+
+func (fakeStreamer) Stream(context.Context, *bedrockruntime.ConverseStreamInput) (bedrock.Events, error) {
+	return nil, errors.New("not used")
+}
+
+func TestBedrockModelDefault(t *testing.T) {
+	c, _ := parse(nil, noEnv)
+	if c.bedrockModel != "us.amazon.nova-lite-v1:0" {
+		t.Errorf("bedrockModel = %q", c.bedrockModel)
 	}
 }

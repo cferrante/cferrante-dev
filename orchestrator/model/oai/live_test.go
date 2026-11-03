@@ -37,7 +37,7 @@ func TestLiveGroq(t *testing.T) {
 	}
 	key, err := (&secrets.SSM{API: ssm.NewFromConfig(awsCfg)}).Get(ctx, envOr("GROQ_KEY_PARAM", "/cferrante-dev/groq-api-key"))
 	if err != nil {
-		t.Fatalf("%v (run: aws sso login --profile %s)", err, envOr("AWS_PROFILE", "cferrante-dev-admin"))
+		t.Fatalf("%v (if your AWS session has expired: aws sso login --profile %s)", err, envOr("AWS_PROFILE", "cferrante-dev-admin"))
 	}
 	c := &Client{Provider: "groq", BaseURL: GroqBaseURL, APIKey: key, Model: envOr("GROQ_MODEL", "openai/gpt-oss-120b")}
 	counts := map[model.EventKind]int{}

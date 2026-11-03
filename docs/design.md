@@ -149,7 +149,7 @@ needed: providers take the schema as JSON anyway); `Reasoning` events come from
 |---|---|---|
 | Groq | `model/oai` | Go standard-library HTTP + SSE client for Groq's OpenAI-compatible API. Not langchaingo: its provider drops gpt-oss's streamed `delta.reasoning` ([spike 1.5](plan.md#spike-findings)) |
 | Ollama | `model/oai` | The same client as Groq, pointed at Ollama's OpenAI-compatible `/v1` API. **Verified in step 3.5:** Ollama streams qwen3's reasoning in the same `delta.reasoning` field, so no adapter is needed. The client sends `reasoning_effort: low` by default for local use: on the laptop's CPU (about 10–17 tokens/s) qwen3's default thinking took 373 s for a one-line sum, `low` 11 s |
-| Bedrock | `model/bedrock` | AWS SDK for Go v2 `ConverseStream` |
+| Bedrock | `model/bedrock` | AWS SDK for Go v2 `ConverseStream`, through a small `Streamer` interface so tests replay real SDK event structs offline; Nova's inline `<thinking>` text becomes reasoning events; stop reasons map to the same words as `model/oai` |
 | Fake | `model/fake` | scripted events, for tests |
 
 **Matching model output.** gpt-oss writes Unicode hyphens (U+2011) where its source has `-`
@@ -520,9 +520,11 @@ Hand-rolled Go runner vs `goose` (adds a dependency). Used in
 ### D4. Thought stream fallback
 
 What the thought stream shows when the fallback model has no visible reasoning. **Decided
-2026-11-02: agent narration only.** The router tells the agent the moment it falls back, and the
-stream says so ("Groq is busy, so Bedrock Nova Lite is answering; it doesn't show its
-reasoning"), next to the card's `status: fallback`. Relates to [§3](#3-streaming-protocol-sse) and [§4](#4-model-layer).
+2026-11-02: agent narration only.** The router sends a `Notice` event the moment it falls back,
+and the stream says why ("The main model is rate-limited, so the backup model is answering"),
+next to the card's `status: fallback`. As built in 5.2: Nova Lite writes its reasoning inline in
+`<thinking>…</thinking>` tags, so the Bedrock adapter streams that into the thought stream as
+reasoning and keeps the answer clean. Relates to [§3](#3-streaming-protocol-sse) and [§4](#4-model-layer).
 
 ### D5. Lambda architecture
 

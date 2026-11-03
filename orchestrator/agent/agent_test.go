@@ -397,3 +397,18 @@ func TestEachTurnIsLoggedOnOneLine(t *testing.T) {
 		t.Errorf("log line contains the question:\n%s", line)
 	}
 }
+
+func TestAFallbackIsNarratedInTheThoughtStream(t *testing.T) {
+	m := &fake.Model{Name: "bedrock", Events: []model.Event{
+		{Kind: model.Notice, Text: "rate-limited"}, {Kind: model.Text, Text: "Answer [1]."},
+	}, Result: model.Result{Fallback: true}}
+	h := newHarness(m, &fakeRetriever{chunks: twoChunks})
+	evs := h.turn(t, context.Background(), auth.Caller{}, TurnRequest{Message: "q"})
+	for _, e := range evs {
+		if e.name == "thought" && e.data["source"] == "agent" &&
+			e.data["text"] == "The main model is rate-limited, so the backup model is answering." {
+			return
+		}
+	}
+	t.Errorf("no fallback narration in %s", names(evs))
+}
