@@ -486,7 +486,10 @@ Categories: `jailbreak`, `roleplay_escape`, `prompt_extraction`, `indirect_injec
 
 - Config via environment variables ([12-factor](concepts.md#12-factor-config)): model ids, limits, region, Neon host.
 - Secrets (Groq API key, Neon password) in **SSM Parameter Store** SecureString, read once per
-  Lambda cold start and cached in memory.
+  Lambda cold start and cached in memory (`orchestrator/secrets`: one SSM call per parameter per
+  process; a failure isn't cached; errors name the parameter, never the value). `make dev` with
+  `CHAT_PROVIDER=groq` reads the key the same way through your AWS SSO profile, so a secret is
+  never in `.env`, a flag or a log.
 - Locally: a git-ignored `.env` file, documented by the committed `.env.example`; `make dev`
   defaults to Ollama so no secrets are needed. Every setting is an environment variable read by
   `orchestrator/config`, and a command-line flag overrides it: **flag > shell environment >
