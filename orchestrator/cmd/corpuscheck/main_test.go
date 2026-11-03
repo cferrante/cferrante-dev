@@ -30,6 +30,7 @@ func TestACommittedInviteeFileFails(t *testing.T) {
 		"byte order mark":           {"docs/bom.md": "\xef\xbb\xbf" + doc("invitee")},
 		"anything in private":       {"corpus/private/notes.md": doc("public")},
 		"non-Markdown in private":   {"corpus/private/data.json": "{}"},
+		"a README in private":       {"corpus/private/README.md": "# Private\n"},
 		"no front matter in corpus": {"corpus/public/x.md": "## Just text\n"},
 		"no access in corpus":       {"corpus/public/x.md": "---\ntitle: T\nurl: /t\n---\nText"},
 	} {
@@ -50,6 +51,7 @@ func TestPublicAndOrdinaryFilesPass(t *testing.T) {
 	got := problemsFor(map[string]string{
 		"corpus/public/about.md":                         doc("public"),
 		"corpus/README.md":                               "# Corpus\n\nHow the folders work. access: invitee is explained here.\n",
+		"corpus/public/README.md":                        "# Public corpus\n",
 		"corpus/public/.gitkeep":                         "",
 		"docs/design.md":                                 "# Design\n\n---\n\naccess: invitee\n",
 		"orchestrator/corpus/testdata/corpus/private.md": doc("invitee"), // test fixture, deliberately invitee

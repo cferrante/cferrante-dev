@@ -42,7 +42,7 @@ marked 🧑 need you (accounts, payments, decisions); everything else I can driv
 | 🧑 [D2] notification channel | 8.4 | open |
 | 🧑 [D3] migrations tool | 9.1 | open |
 | 🧑 [D4] thought stream on fallback | 5.2 | ✅ narration only (2026-11-02) |
-| 🧑 Real corpus: public docs in `corpus/public/`, invitee docs in a private repo | 6 (golden set) | not started; can run alongside Phase 5 |
+| 🧑 Real corpus: public docs in `corpus/public/`, invitee docs in a private repo | 6 (golden set) | private repo created (2026-11-03) with a README, cloned into `corpus/private/`; documents not written yet |
 | 🧑 [D5] Lambda architecture | 7.6 | proposed: x86_64, revisited by measurement in 7.6 |
 | 🧑 Doc-link checker in CI? | 0.2 | ✅ yes (done) |
 | 🧑 JS test runner for the frontend (no npm toolchain) | 4.2 | ✅ Deno, pinned (2026-11-02); Node rejected for its security upkeep |
@@ -330,6 +330,7 @@ Any change from this plan: what changed, why, and which step.
 | 2026-11-03 | 5.3 | Corpus, index and embedder settings moved into a shared `orchestrator/indexing` package used by both the indexer and `make dev`; the indexer's `-out` became `-index` and its default embedder is now `ollama` (was `hash`), as in `make dev`; new `CHUNK_TARGET` and `TITAN_MODEL` | Two copies of the settings had already drifted (the known issue from 3.5); one owner means both commands build the same index from the same `.env` |
 | 2026-11-03 | 5.3 | `CORPUS_DIR` renamed `CORPUS_DIRS` (colon-separated, like `PATH`); a still-set `CORPUS_DIR` stops startup with the new name, and a missing corpus folder is an error | Silently ignoring the old name would index the wrong corpus; `filepath.Glob` returns no files for a missing folder, so a typo would drop the private documents without a word |
 | 2026-11-03 | 5.3 | The committed-invitee guard is `make corpus-check` (Go, over `git ls-files`), and it fails closed: under `corpus/` a file must say `access: public`, nothing may be tracked in `corpus/private/`, and anywhere else any `access` value other than `public` fails, in any case or spacing. Fixtures under `testdata/` are exempt | Matching only `access: invitee` would miss a typo (`invite`) or an `Access:` line, both of which the strict parser rejects but GitHub would still publish. Go, not shell, so it's tested against a real temporary repo |
+| 2026-11-03 | 5.3 | `README.md` in a corpus folder is skipped by the indexer and accepted by `make corpus-check` without front matter (still refused inside `corpus/private/`) | The private repo needs a README to explain itself, and without front matter it would have stopped every build |
 | 2026-11-03 | 5.3 | Titan is called once per text, one after another: 5 fixture chunks in about 1.6 s from the laptop | Titan v2 has no batch input on InvokeModel. Fine for the fixture; revisit with a few concurrent calls if the real corpus makes builds slow |
 | 2026-11-02 | 5.2 | [D4] built as a router `Notice` event the agent narrates; Nova's inline `<thinking>` text is streamed as reasoning, so the narration no longer says the backup model hides its reasoning | Live: Nova Lite put its reasoning into the answer between `<thinking>` tags, split across chunks |
 

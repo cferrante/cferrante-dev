@@ -281,7 +281,9 @@ void         rag_builder_free(rag_builder* b);
   `git ls-files` so the ignored clone is never read. It fails closed: under `corpus/` every
   Markdown file must say `access: public` and nothing may be tracked in `corpus/private/`;
   elsewhere any `access` value other than `public` fails, in any case or spacing. Fixtures
-  under `testdata/` are exempt.
+  under `testdata/` are exempt. A `README.md` in a corpus folder explains the folder: the
+  indexer skips it and the check accepts it without front matter (except in `corpus/private/`,
+  where nothing may be tracked).
 - **One set of settings:** `orchestrator/indexing` owns `CORPUS_DIRS`, `INDEX_PATH`,
   `CHUNK_TARGET` and the embedder settings (`EMBEDDER`, `EMBED_MODEL`, `EMBED_DIM`,
   `TITAN_MODEL`, `OLLAMA_BASE_URL`); the indexer and `make dev` both use it, so they build the
