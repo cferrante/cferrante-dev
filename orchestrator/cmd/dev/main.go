@@ -22,6 +22,8 @@ import (
 	"syscall"
 	"time"
 
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	"github.com/cferrante/cferrante-dev/orchestrator/agent"
 	"github.com/cferrante/cferrante-dev/orchestrator/auth"
 	"github.com/cferrante/cferrante-dev/orchestrator/clock"
@@ -31,6 +33,7 @@ import (
 	"github.com/cferrante/cferrante-dev/orchestrator/model"
 	"github.com/cferrante/cferrante-dev/orchestrator/model/oai"
 	"github.com/cferrante/cferrante-dev/orchestrator/retrieval"
+	"github.com/cferrante/cferrante-dev/orchestrator/secrets"
 	"github.com/cferrante/cferrante-dev/orchestrator/server"
 	"github.com/cferrante/cferrante-dev/orchestrator/suggested"
 	"github.com/cferrante/cferrante-dev/orchestrator/tools"
@@ -46,6 +49,8 @@ type config struct {
 	webDir                              string        // the page (design §14)
 	assistant                           string        // the assistant's name, in the system prompt
 	suggestedFile                       string        // stored answers for the suggestion chips (design §14)
+	provider, groqModel, groqKeyParam   string        // CHAT_PROVIDER: ollama | groq
+	awsProfile, awsRegion               string        // for SSM (and Bedrock from step 5.2)
 }
 
 // parse reads the configuration. Every option has an environment variable
@@ -62,7 +67,12 @@ func parse(args []string, getenv cfg.Getenv) (config, error) {
 	fs.StringVar(&c.embedModel, "embed-model", env.String("EMBED_MODEL", "nomic-embed-text"), "Ollama embedding model [EMBED_MODEL]")
 	fs.IntVar(&c.embedDim, "embed-dim", env.Int("EMBED_DIM", 0), "embedding size; 0 = 768 for ollama, 256 for hash [EMBED_DIM]")
 	fs.StringVar(&c.model, "model", env.String("CHAT_MODEL", "qwen3:4b"), "Ollama chat model [CHAT_MODEL]")
-	fs.StringVar(&c.effort, "effort", env.String("REASONING_EFFORT", "low"), "reasoning effort; low keeps qwen3's thinking short on a CPU; none for models without thinking [REASONING_EFFORT]")
+	fs.StringVar(&c.effort, "effort", env.String("REASONING_EFFORT", ""), "reasoning effort; unset = low for Ollama (qwen3 on a CPU), the provider's default for Groq; none omits it [REASONING_EFFORT]")
+	fs.StringVar(&c.provider, "provider", env.String("CHAT_PROVIDER", "ollama"), "ollama or groq [CHAT_PROVIDER]")
+	fs.StringVar(&c.groqModel, "groq-model", env.String("GROQ_MODEL", "openai/gpt-oss-120b"), "Groq model [GROQ_MODEL]")
+	fs.StringVar(&c.groqKeyParam, "groq-key-param", env.String("GROQ_KEY_PARAM", "/cferrante-dev/groq-api-key"), "SSM SecureString holding the Groq key [GROQ_KEY_PARAM]")
+	fs.StringVar(&c.awsProfile, "aws-profile", env.String("AWS_PROFILE", "cferrante-dev-admin"), "AWS profile for SSM [AWS_PROFILE]")
+	fs.StringVar(&c.awsRegion, "aws-region", env.String("AWS_REGION", "us-east-1"), "AWS region [AWS_REGION]")
 	fs.BoolVar(&c.invitee, "invitee", env.Bool("DEV_INVITEE", false), "act as an invitee, who sees private chunks [DEV_INVITEE]")
 	fs.StringVar(&c.contact, "contact", env.String("CONTACT_OPTIONS", "Invitees can send a message through this chat."), "get_contact_options answer [CONTACT_OPTIONS]")
 	fs.DurationVar(&c.deadline, "turn-deadline", env.Duration("TURN_DEADLINE", 5*time.Minute), "whole-turn limit; generous because CPU inference is slow [TURN_DEADLINE]")
@@ -76,8 +86,18 @@ func parse(args []string, getenv cfg.Getenv) (config, error) {
 	if err := fs.Parse(args); err != nil {
 		return c, err
 	}
-	if c.effort == "none" { // for models without thinking, which reject the field
+	switch c.provider {
+	case "ollama", "groq":
+	default:
+		return c, fmt.Errorf("CHAT_PROVIDER %q: want ollama or groq", c.provider)
+	}
+	switch c.effort {
+	case "none": // for models without thinking, which reject the field
 		c.effort = ""
+	case "":
+		if c.provider == "ollama" {
+			c.effort = "low" // qwen3's default thinking takes minutes on a CPU
+		} // Groq: leave it to the provider's default, as spike 1.5 measured
 	}
 	return c, nil
 }
@@ -163,7 +183,10 @@ func main() {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	m := &oai.Client{Provider: "ollama", BaseURL: c.ollamaURL + "/v1", Model: c.model, ReasoningEffort: c.effort}
+	m, err := chatModel(ctx, c, ssmSecret(c))
+	if err != nil {
+		log.Fatal(err)
+	}
 	h, cleanup, err := setup(ctx, c, m, os.Stdout)
 	if err != nil {
 		log.Fatal(err)
@@ -177,10 +200,47 @@ func main() {
 		srv.Shutdown(shutdown)
 	}()
 	fmt.Printf("open http://%s/ in a browser to talk to the %s\n", c.addr, c.assistant)
-	fmt.Printf("serving http://%s/chat (model %s, effort %s, via Ollama at %s, invitee=%v); Ctrl+C to stop\n",
-		c.addr, c.model, c.effort, c.ollamaURL, c.invitee)
+	where := fmt.Sprintf("model %s via Ollama at %s", c.model, c.ollamaURL)
+	if c.provider == "groq" {
+		where = fmt.Sprintf("model %s via Groq", c.groqModel)
+	}
+	effort := c.effort
+	if effort == "" {
+		effort = "provider default"
+	}
+	fmt.Printf("serving http://%s/chat (%s, effort %s, invitee=%v); Ctrl+C to stop\n", c.addr, where, effort, c.invitee)
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatal(err)
 	}
 	fmt.Println("stopped")
+}
+
+// chatModel builds the model for c.provider; secret reads a parameter from
+// SSM (stubbed in tests).
+func chatModel(ctx context.Context, c config, secret func(context.Context, string) (string, error)) (model.Model, error) {
+	if c.provider != "groq" {
+		return &oai.Client{Provider: "ollama", BaseURL: c.ollamaURL + "/v1", Model: c.model, ReasoningEffort: c.effort}, nil
+	}
+	key, err := secret(ctx, c.groqKeyParam)
+	if err != nil {
+		return nil, fmt.Errorf("%w (is your AWS session current? run: aws sso login --profile %s)", err, c.awsProfile)
+	}
+	return &oai.Client{Provider: "groq", BaseURL: oai.GroqBaseURL, APIKey: key, Model: c.groqModel, ReasoningEffort: c.effort}, nil
+}
+
+// ssmSecret reads parameters through the AWS profile, creating the client on
+// first use so Ollama-only runs never touch AWS.
+func ssmSecret(c config) func(context.Context, string) (string, error) {
+	var store *secrets.SSM
+	return func(ctx context.Context, name string) (string, error) {
+		if store == nil {
+			awsCfg, err := awsconfig.LoadDefaultConfig(ctx,
+				awsconfig.WithSharedConfigProfile(c.awsProfile), awsconfig.WithRegion(c.awsRegion))
+			if err != nil {
+				return "", err
+			}
+			store = &secrets.SSM{API: ssm.NewFromConfig(awsCfg)}
+		}
+		return store.Get(ctx, name)
+	}
 }

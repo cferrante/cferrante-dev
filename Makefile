@@ -7,7 +7,7 @@ GO_PKGS := $(shell go list ./... 2>/dev/null)
 SH_FILES := $(shell find . -name '*.sh' -not -path './.git/*')
 SHELLCHECK ?= shellcheck
 
-.PHONY: help tools css site css-check jstest test engine-test bench-engine bench-engine-scale bench-go dev lint fmt docs-check
+.PHONY: help tools css site css-check jstest test engine-test bench-engine bench-engine-scale bench-go dev smoke-groq lint fmt docs-check
 
 ENGINE_BUILD := build/engine
 ENGINE_RELEASE := build/engine-release
@@ -63,6 +63,9 @@ dev: css site ## Serve the page and /chat locally over Ollama; DEV_FLAGS=-invite
 	@# when the server shuts down cleanly, so make would report a false error.
 	go build -o build/dev/server ./orchestrator/cmd/dev
 	build/dev/server $(DEV_FLAGS)
+
+smoke-groq: ## Call the real Groq API once (needs aws sso login; spends free-tier quota)
+	LIVE_GROQ=1 go test -count=1 -run TestLiveGroq -v ./orchestrator/model/oai/
 
 lint: tools ## Check formatting, run go vet, shellcheck and deno lint
 	@unformatted=$$(gofmt -l .); \
