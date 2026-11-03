@@ -13,5 +13,13 @@
   "action_already_done": "That was already done; nothing was sent twice.",
   "action_not_found": "That request is no longer available. Ask again if you still want it.",
   "not_authorized": "You can no longer do that. Please sign in again.",
-  "action_failed": "That didn't go through, and it wasn't retried. Please try again later."
+  "action_failed": "That didn't go through, and it wasn't retried. Please try again later.",
+  "collection": "portfolio",
+  "source_one": "source",
+  "source_other": "sources",
+  "excerpt_one": "excerpt",
+  "excerpt_other": "excerpts",
+  "retrieval_found": "Found {excerpts} from {sources}: {titles}.",
+  "retrieval_none": "Nothing in the {collection} matched; I'll say so rather than guess.",
+  "retrieval_card": "{excerpts} · {sources} · top score {score}"
 }

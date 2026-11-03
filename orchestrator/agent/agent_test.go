@@ -15,6 +15,7 @@ import (
 	"github.com/cferrante/cferrante-dev/orchestrator/model"
 	"github.com/cferrante/cferrante-dev/orchestrator/model/fake"
 	"github.com/cferrante/cferrante-dev/orchestrator/sse"
+	"github.com/cferrante/cferrante-dev/orchestrator/wording"
 )
 
 type fakeRetriever struct {
@@ -132,7 +133,7 @@ func TestTurnStreamsRetrievalThoughtsTokensAndCitations(t *testing.T) {
 	if evs[0].data["kind"] != "retrieval" || evs[3].data["kind"] != "inference" {
 		t.Errorf("step kinds = %v, %v", evs[0].data["kind"], evs[3].data["kind"])
 	}
-	if d := evs[1].data["detail"].(map[string]any); d["hits"] != float64(2) || d["top_score"] != 0.9 {
+	if d := evs[1].data["detail"].(map[string]any); d["hits"] != float64(2) || d["sources"] != float64(2) || d["top_score"] != 0.9 {
 		t.Errorf("retrieval detail = %v", d)
 	}
 	if evs[2].data["source"] != "agent" || evs[4].data["source"] != "model" {
@@ -318,13 +319,77 @@ func TestStoreKeepsOnlyRecentHistoryForThePrompt(t *testing.T) {
 	}
 }
 
-func TestNarrationGroupsPassagesFromTheSameDocument(t *testing.T) {
-	got := narrate([]Chunk{{Title: "Project Alpha"}, {Title: "Project Alpha"}, {Title: "A long story"}, {Title: "Project Alpha"}})
-	if want := "Found 4 passages: Project Alpha (3 passages), A long story."; got != want {
+// Visitors read sources and excerpts from the portfolio (step 5.3a), not
+// "passages"; each source is listed once, with a count when it gave several.
+func TestNarrationNamesSourcesAndExcerpts(t *testing.T) {
+	var w wording.Wording
+	got := narrate([]Chunk{{Title: "Project Alpha"}, {Title: "Project Alpha"}, {Title: "A long story"}, {Title: "Project Alpha"}}, w)
+	if want := "Found 4 excerpts from 2 sources: Project Alpha (3), A long story."; got != want {
 		t.Errorf("narrate = %q, want %q", got, want)
 	}
-	if got := narrate([]Chunk{{Title: "Only"}}); got != "Found 1 passage: Only." {
+	if got := narrate([]Chunk{{Title: "Only"}}, w); got != "Found 1 excerpt from 1 source: Only." {
 		t.Errorf("narrate one = %q", got)
+	}
+	if got := narrate(nil, w); got != "Nothing in the portfolio matched; I'll say so rather than guess." {
+		t.Errorf("narrate none = %q", got)
+	}
+}
+
+func TestNarrationUsesTheConfiguredWording(t *testing.T) {
+	w, err := wording.Load("m.json", func(string) ([]byte, error) {
+		return []byte(`{"collection": "body of work", "source_other": "documents",
+			"retrieval_found": "{titles}: {excerpts} across {sources}."}`), nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := narrate([]Chunk{{Title: "A"}, {Title: "B"}}, w); got != "A, B: 2 excerpts across 2 documents." {
+		t.Errorf("narrate = %q", got)
+	}
+	if got := narrate(nil, w); got != "Nothing in the body of work matched; I'll say so rather than guess." {
+		t.Errorf("narrate none = %q", got)
+	}
+}
+
+// The prompt carries the collection word and never "passage", so the model
+// has nothing to echo; it's told not to describe its mechanics, and to say it
+// doesn't have the information when the excerpts don't answer.
+func TestPromptSpeaksOfThePortfolioNotPassages(t *testing.T) {
+	for _, tc := range []struct {
+		wording    string
+		collection string
+	}{{"", "portfolio"}, {`{"collection": "body of work"}`, "body of work"}} {
+		m := &fake.Model{Name: "groq", Events: answer("ok")}
+		h := newHarness(m, &fakeRetriever{chunks: twoChunks})
+		if tc.wording != "" {
+			w, err := wording.Load("m.json", func(string) ([]byte, error) { return []byte(tc.wording), nil })
+			if err != nil {
+				t.Fatal(err)
+			}
+			h.agent.Wording = w
+		}
+		h.turn(t, context.Background(), auth.Caller{}, TurnRequest{Message: "q"})
+		req := m.Requests()[0]
+		sys, user := flat(req.System), req.Messages[len(req.Messages)-1].Content
+		if !strings.Contains(sys, "owner's "+tc.collection) {
+			t.Errorf("system prompt lacks %q:\n%s", "owner's "+tc.collection, sys)
+		}
+		for _, text := range []string{sys, user} {
+			if strings.Contains(strings.ToLower(text), "passage") || strings.Contains(text, "{collection}") {
+				t.Errorf("prompt mentions passages or an unfilled placeholder:\n%s", text)
+			}
+		}
+		for _, rule := range []string{"never mention", "don't have that information"} {
+			if !strings.Contains(sys, rule) {
+				t.Errorf("system prompt lacks %q:\n%s", rule, sys)
+			}
+		}
+	}
+	m := &fake.Model{Name: "groq", Events: answer("ok")}
+	h := newHarness(m, &fakeRetriever{})
+	h.turn(t, context.Background(), auth.Caller{}, TurnRequest{Message: "q"})
+	if user := m.Requests()[0].Messages[0].Content; strings.Contains(strings.ToLower(user), "passage") {
+		t.Errorf("no-match prompt mentions passages:\n%s", user)
 	}
 }
 
@@ -411,4 +476,14 @@ func TestAFallbackIsNarratedInTheThoughtStream(t *testing.T) {
 		}
 	}
 	t.Errorf("no fallback narration in %s", names(evs))
+}
+
+// The retrieval card counts sources (documents) apart from excerpts.
+func TestRetrievalCardCountsSourcesAndExcerpts(t *testing.T) {
+	chunks := append([]Chunk{{ID: "proj-a#details", Title: "Project A", URL: "/a#details", Text: "More about A.", Score: 0.95}}, twoChunks...)
+	h := newHarness(&fake.Model{Name: "groq", Events: answer("ok")}, &fakeRetriever{chunks: chunks})
+	evs := h.turn(t, context.Background(), auth.Caller{}, TurnRequest{Message: "q"})
+	if d := evs[1].data["detail"].(map[string]any); d["hits"] != float64(3) || d["sources"] != float64(2) {
+		t.Errorf("retrieval detail = %v, want 3 excerpts from 2 sources", d)
+	}
 }

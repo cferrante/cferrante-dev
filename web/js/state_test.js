@@ -14,14 +14,14 @@ Deno.test("starts idle and empty", () => {
 
 Deno.test("model reasoning chunks join into one block; agent lines stay separate", () => {
   const s = run([
-    ["thought", { text: "Found 2 passages.", source: "agent" }],
+    ["thought", { text: "Found 2 excerpts from 1 source: Project Alpha (2).", source: "agent" }],
     ["thought", { text: "The user ", source: "model" }],
     ["thought", { text: "asks about Go.", source: "model" }],
     ["thought", { text: "Calling a tool.", source: "agent" }],
     ["thought", { text: "Now answer.", source: "model" }],
   ]);
   assertEquals(s.thoughts, [
-    { source: "agent", text: "Found 2 passages." },
+    { source: "agent", text: "Found 2 excerpts from 1 source: Project Alpha (2)." },
     { source: "model", text: "The user asks about Go." },
     { source: "agent", text: "Calling a tool." },
     { source: "model", text: "Now answer." },

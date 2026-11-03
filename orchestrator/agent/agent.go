@@ -18,18 +18,19 @@ import (
 	"github.com/cferrante/cferrante-dev/orchestrator/model"
 	"github.com/cferrante/cferrante-dev/orchestrator/sse"
 	"github.com/cferrante/cferrante-dev/orchestrator/tools"
+	"github.com/cferrante/cferrante-dev/orchestrator/wording"
 )
 
 // TurnDeadline bounds a whole turn (design §3).
 const TurnDeadline = 60 * time.Second
 
-// Chunk is a retrieved passage.
+// Chunk is a retrieved excerpt.
 type Chunk struct {
 	ID, Title, URL, Text string
 	Score                float32
 }
 
-// Retriever finds the passages most relevant to a query, among those the
+// Retriever finds the excerpts most relevant to a query, among those the
 // access mask allows.
 type Retriever interface {
 	Retrieve(ctx context.Context, query string, mask uint32, k int) ([]Chunk, error)
@@ -71,13 +72,16 @@ type Agent struct {
 	Retriever Retriever
 	Store     ConversationStore
 	Clock     clock.Clock
-	TopK      int           // passages per turn; default 5
+	TopK      int           // excerpts per turn; default 5
 	Deadline  time.Duration // whole-turn limit; default TurnDeadline
 	// Log, when set, gets one summary line per turn (no visitor text).
 	Log io.Writer
 	// AssistantName is what the model is told it is; default "Context Concierge".
 	AssistantName string
-	Tools         tools.Registry // nil: no tools offered
+	// Wording is the visitor-facing retrieval wording (MESSAGES_FILE); the
+	// zero value is the defaults.
+	Wording wording.Wording
+	Tools   tools.Registry // nil: no tools offered
 	// Suggestions answers suggested questions from storage; nil: none.
 	Suggestions Suggestions
 	Pending     tools.PendingActions // required when Tools has side effects
@@ -148,14 +152,14 @@ func (a *Agent) Turn(ctx context.Context, caller auth.Caller, req TurnRequest, w
 		_ = w.StepEnd("retrieval", "error", map[string]any{"error": err.Error()})
 		return a.fail(ctx, w, "retrieval_failed", "couldn't search the portfolio")
 	}
-	detail := map[string]any{"hits": len(chunks)}
+	detail := map[string]any{"hits": len(chunks), "sources": len(sourceCounts(chunks))}
 	if len(chunks) > 0 {
 		detail["top_score"] = chunks[0].Score
 	}
 	if err := w.StepEnd("retrieval", "ok", detail); err != nil {
 		return err
 	}
-	if err := w.Thought(narrate(chunks), "agent"); err != nil {
+	if err := w.Thought(narrate(chunks, a.Wording), "agent"); err != nil {
 		return err
 	}
 
@@ -163,7 +167,7 @@ func (a *Agent) Turn(ctx context.Context, caller auth.Caller, req TurnRequest, w
 	// MaxToolRounds rounds (design §3). Layer 1 of authorization: the model
 	// is only shown the tools this caller may use (design §6).
 	mreq := prompt(chunks, history, req.Message)
-	mreq.System = named(mreq.System, a.AssistantName)
+	mreq.System = named(mreq.System, a.AssistantName, a.Wording.Get("collection"))
 	mreq.Tools = a.Tools.For(caller)
 	if len(mreq.Tools) > 0 {
 		mreq.System += toolGuidance
@@ -247,7 +251,7 @@ func (a *Agent) Turn(ctx context.Context, caller auth.Caller, req TurnRequest, w
 	}
 	tl.outcome = "done"
 
-	// History keeps the bare question, not the passages, so later turns
+	// History keeps the bare question, not the excerpts, so later turns
 	// retrieve afresh instead of carrying stale context.
 	if err := a.Store.Append(ctx, convID, caller.ID,
 		model.Message{Role: model.User, Content: req.Message},
@@ -291,30 +295,49 @@ func (a *Agent) newID() string {
 	return "c_" + hex.EncodeToString(b[:])
 }
 
-func narrate(chunks []Chunk) string {
-	if len(chunks) == 0 {
-		return "No passages matched; I'll say so rather than guess."
-	}
-	// One entry per document, in first-seen order, with a count when a
-	// document supplied several passages.
-	var titles []string
-	count := map[string]int{}
+// sourceCounts lists each source (document title) once, in first-seen order,
+// with how many excerpts it supplied.
+func sourceCounts(chunks []Chunk) []sourceCount {
+	var out []sourceCount
+	at := map[string]int{}
 	for _, c := range chunks {
-		if count[c.Title] == 0 {
-			titles = append(titles, c.Title)
+		i, seen := at[c.Title]
+		if !seen {
+			i = len(out)
+			at[c.Title] = i
+			out = append(out, sourceCount{title: c.Title})
 		}
-		count[c.Title]++
+		out[i].n++
 	}
-	for i, t := range titles {
-		if n := count[t]; n > 1 {
-			titles[i] = fmt.Sprintf("%s (%d passages)", t, n)
+	return out
+}
+
+type sourceCount struct {
+	title string
+	n     int
+}
+
+// narrate is the thought-stream line about what retrieval found, in the
+// visitor's words (design §14): "Found 4 excerpts from 2 sources: Project
+// Alpha (3), A long story."
+func narrate(chunks []Chunk, w wording.Wording) string {
+	if len(chunks) == 0 {
+		return wording.Fill(w.Get("retrieval_none"), map[string]string{"collection": w.Get("collection")})
+	}
+	sources := sourceCounts(chunks)
+	titles := make([]string, len(sources))
+	for i, s := range sources {
+		titles[i] = s.title
+		if s.n > 1 {
+			titles[i] = fmt.Sprintf("%s (%d)", s.title, s.n)
 		}
 	}
-	noun := "passages"
-	if len(chunks) == 1 {
-		noun = "passage"
-	}
-	return fmt.Sprintf("Found %d %s: %s.", len(chunks), noun, strings.Join(titles, ", "))
+	return wording.Fill(w.Get("retrieval_found"), map[string]string{
+		"excerpts":   w.Count(len(chunks), "excerpt"),
+		"sources":    w.Count(len(sources), "source"),
+		"titles":     strings.Join(titles, ", "),
+		"collection": w.Get("collection"),
+	})
 }
 
 func inferenceDetail(r model.Result, elapsed time.Duration) map[string]any {
