@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -300,3 +301,37 @@ func TestToolGuidanceLimitsActionsToExplicitRequests(t *testing.T) {
 // flat collapses whitespace: the prompt is wrapped for reading, and the
 // model doesn't care where its lines break.
 func flat(s string) string { return strings.Join(strings.Fields(s), " ") }
+
+// Groq caches exact prompt prefixes (design §4, step 5.4), so everything
+// before the conversation must be identical from turn to turn for the same
+// kind of caller: the system prompt holds no question, excerpt, time or id,
+// and the tools arrive in the same order. The question and its excerpts come
+// last. This held before 5.4; the test keeps it from regressing.
+func TestThePromptPrefixIsStableAcrossTurns(t *testing.T) {
+	for _, caller := range []auth.Caller{visitor, invitee} {
+		h := newToolHarness(answer("ok"), answer("ok"))
+		h.ret.chunks = twoChunks
+		h.turn(t, context.Background(), caller, TurnRequest{Message: "What is A?"})
+		h.clock.Advance(time.Hour)
+		h.ret.chunks = []Chunk{{ID: "proj-c#x", Title: "Project C", URL: "/c", Text: "C is new.", Score: 0.7}}
+		h.turn(t, context.Background(), caller, TurnRequest{Message: "And C?"})
+		reqs := h.model.Requests()
+		if len(reqs) != 2 {
+			t.Fatalf("%d requests, want 2", len(reqs))
+		}
+		if reqs[0].System != reqs[1].System {
+			t.Errorf("%s: system prompt changed between turns:\n%s\n---\n%s", caller.ID, reqs[0].System, reqs[1].System)
+		}
+		if !reflect.DeepEqual(reqs[0].Tools, reqs[1].Tools) {
+			t.Errorf("%s: tools changed between turns", caller.ID)
+		}
+		for _, varying := range []string{"What is A?", "A is a Go service.", "And C?", "C is new."} {
+			if strings.Contains(reqs[0].System+reqs[1].System, varying) {
+				t.Errorf("%s: system prompt contains per-turn text %q", caller.ID, varying)
+			}
+		}
+		if last := reqs[1].Messages[len(reqs[1].Messages)-1].Content; !strings.HasSuffix(last, "Question: And C?") || !strings.Contains(last, "C is new.") {
+			t.Errorf("%s: last message = %q, want the excerpts then the question", caller.ID, last)
+		}
+	}
+}

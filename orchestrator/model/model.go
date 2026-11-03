@@ -20,7 +20,6 @@ type Model interface {
 type Request struct {
 	System          string
 	Tools           []ToolSpec // already filtered to what the caller may use (design §6)
-	CacheAfterTools bool       // place a prompt-cache point after tool definitions
 	Messages        []Message
 	ResponseSchema  json.RawMessage // JSON Schema; non-nil = constrained JSON output
 	MaxTokens       int

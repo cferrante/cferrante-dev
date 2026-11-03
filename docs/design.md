@@ -118,7 +118,6 @@ type Model interface {
 type Request struct {
     System          string
     Tools           []ToolSpec   // already filtered to what the caller may use (§6)
-    CacheAfterTools bool         // place a prompt-cache point after tool definitions
     Messages        []Message    // retrieved context + conversation + question
     ResponseSchema  json.RawMessage // JSON Schema; non-nil = constrained JSON output
     MaxTokens       int
@@ -139,9 +138,8 @@ type Result struct {
 }
 ```
 
-`CacheAfterTools` enables [prompt caching](concepts.md#prompt-caching); a non-nil `ResponseSchema`
-requests [structured output](concepts.md#structured-output) (raw JSON, so no schema library is
-needed: providers take the schema as JSON anyway); `Reasoning` events come from
+A non-nil `ResponseSchema` requests [structured output](concepts.md#structured-output) (raw JSON,
+so no schema library is needed: providers take the schema as JSON anyway); `Reasoning` events come from
 [reasoning models](concepts.md#reasoning-models); `ToolCall` events are
 [tool calls](concepts.md#tool-calling).
 
@@ -151,6 +149,29 @@ needed: providers take the schema as JSON anyway); `Reasoning` events come from
 | Ollama | `model/oai` | The same client as Groq, pointed at Ollama's OpenAI-compatible `/v1` API. **Verified in step 3.5:** Ollama streams qwen3's reasoning in the same `delta.reasoning` field, so no adapter is needed. The client sends `reasoning_effort: low` by default for local use: on the laptop's CPU (about 10–17 tokens/s) qwen3's default thinking took 373 s for a one-line sum, `low` 11 s |
 | Bedrock | `model/bedrock` | AWS SDK for Go v2 `ConverseStream`, through a small `Streamer` interface so tests replay real SDK event structs offline; Nova's inline `<thinking>` text becomes reasoning events; stop reasons map to the same words as `model/oai` |
 | Fake | `model/fake` | scripted events, for tests |
+
+**[Prompt caching](concepts.md#prompt-caching) (step 5.4).** Groq caches automatically on exact
+prompt prefixes (gpt-oss models; 50% off cached input tokens, which also don't count against rate
+limits; entries live 2 hours unused). Our part is to keep the prefix stable: the system prompt is
+the first message and holds no per-turn text (no time, ids or excerpts), tools follow in registry
+order, then history, and the question with its excerpts comes last; a test pins this. Hits aren't
+guaranteed: on 2026-11-03, 0 of 3 repeats hit at about 500 input tokens and 0 of 4 at 1,460, with
+no `prompt_tokens_details` in the usage at all (spike 1.5, from Lambda: 7 of 20 second turns).
+`make measure-groq-cache` measures it again; it logs rather than fails. Cached tokens appear on the inference card when there are any. **No Bedrock cache point:**
+Nova Lite accepts explicit cache points only in `system` and `messages` (not after tools), needs at
+least 1,000 tokens before each, and caches implicitly anyway, unreported; so the planned
+`CacheAfterTools` field was removed.
+
+**Structured output (step 5.4).** `model/oai` sends a `ResponseSchema` request as Groq's strict
+`json_schema` (`{"name": "response", "strict": true, "schema": …}`), which uses constrained
+decoding on gpt-oss. Groq supports it **without streaming and without tools**, so such a request
+goes as one non-streamed call: tools with a schema are an error, and the result arrives as one
+`Text` event holding the JSON (reasoning, if any, first), with `TTFT` equal to the whole call. The
+schema is checked locally for strict mode's rules before sending (every object sets
+`additionalProperties: false` and lists all its properties in `required`), and the output must be
+a JSON object, or the call returns an error: the caller (the Phase 6 judge) gets valid JSON or an
+error, never something in between. Bedrock still refuses `ResponseSchema`, so a schema request
+that falls back fails rather than returning free text.
 
 **Matching model output.** gpt-oss writes Unicode hyphens (U+2011) where its source has `-`
 (20 of 20 answers in spike 1.5). Any exact comparison against model output, such as canary
