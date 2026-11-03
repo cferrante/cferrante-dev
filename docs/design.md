@@ -636,6 +636,26 @@ Plan Phase 4 builds it.
   `{assistant}` and `{site}`). Built in, not fetched, so the page stays static files. An unknown
   or empty message key stops the build; values are JSON-escaped and only ever shown as text.
   Wording is configurable; which errors offer Retry is not.
+- **Visitor wording for retrieval (step 5.3a):** visitors read *sources* (documents) and
+  *excerpts* (pieces of them) from the *portfolio*, never "passages" or "chunks", which stay
+  developer terms. The same `MESSAGES_FILE` holds these keys, with defaults:
+  `collection` ("portfolio"), `source_one`/`source_other`, `excerpt_one`/`excerpt_other`
+  (one/other plural forms chosen by count), `retrieval_found` ("Found {excerpts} from
+  {sources}: {titles}."), `retrieval_none` ("Nothing in the {collection} matched; I'll say so
+  rather than guess.") and `retrieval_card` ("{excerpts} · {sources} · top score {score}").
+  `{excerpts}` and `{sources}` render as a count and its noun ("4 excerpts"); `{titles}` lists
+  each source once, with a count when it gave several excerpts ("Project Alpha (3), Résumé").
+  **One file, read twice:** `make site` builds it into the page (the card), and the server
+  loads it at startup (the thought-stream narration and the prompt's `{collection}`), both
+  through `orchestrator/wording`, so the two can't disagree. Validation stops the build or
+  startup on an unknown key, a non-string or empty value, a placeholder the key doesn't allow
+  (so `{exerpts}` can't render literally), or a missing required one (`retrieval_found` needs
+  `{excerpts}`, `{sources}` and `{titles}`; `retrieval_card` needs `{excerpts}`). The Go and
+  JavaScript defaults are checked equal by a test. **Not configurable: the prompt's
+  instructions.** Only `{collection}` (and `{assistant}`) is substituted into the system
+  prompt, because Phase 6's evals score answers against it; the prompt tells the model never
+  to mention excerpts, numbering or searching to the visitor, and to say it doesn't have the
+  information when the excerpts don't answer.
 - **Accessibility:** the answer region is `aria-live="polite"`; motion is off under
   [reduced motion](concepts.md#reduced-motion); everything works from the keyboard; the panes
   stack on narrow screens.
