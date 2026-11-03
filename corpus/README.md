@@ -36,9 +36,10 @@ git clone git@github.com:<you>/<private-corpus-repo>.git corpus/private
 CORPUS_DIRS=corpus/public:corpus/private go run ./orchestrator/cmd/indexer -embedder titan
 ```
 
-For `make dev`, set `CORPUS_DIRS=corpus/public:corpus/private` and `SUGGESTED_FILE=` (empty) in
+For `make dev`, set `CORPUS_DIRS=corpus/public:corpus/private` and `SUGGESTED_FILE=none` in
 `.env`: the default suggestions file cites the test fixture's chunks, so startup refuses it
-against the real corpus until the real suggested answers are written.
+against the real corpus until the real suggested answers are written. (An empty value means
+"use the default", as for every setting.)
 
 The built index and its sidecar hold every chunk's text, private ones included: they are never
 committed or served as static files, only shipped inside the Lambda package.

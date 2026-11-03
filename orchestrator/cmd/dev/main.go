@@ -76,7 +76,7 @@ func parse(args []string, getenv cfg.Getenv) (config, error) {
 	fs.StringVar(&c.contact, "contact", env.String("CONTACT_OPTIONS", "Invitees can send a message through this chat."), "get_contact_options answer [CONTACT_OPTIONS]")
 	fs.DurationVar(&c.deadline, "turn-deadline", env.Duration("TURN_DEADLINE", 5*time.Minute), "whole-turn limit; generous because CPU inference is slow [TURN_DEADLINE]")
 	fs.StringVar(&c.assistant, "assistant", env.String("ASSISTANT_NAME", agent.DefaultAssistantName), "the assistant's name, also shown by the page [ASSISTANT_NAME]")
-	fs.StringVar(&c.suggestedFile, "suggested", env.String("SUGGESTED_FILE", "orchestrator/corpus/testdata/suggested.json"), "stored answers for the suggestion chips; empty for none [SUGGESTED_FILE]")
+	fs.StringVar(&c.suggestedFile, "suggested", env.String("SUGGESTED_FILE", "orchestrator/corpus/testdata/suggested.json"), "stored answers for the suggestion chips; none for no chips [SUGGESTED_FILE]")
 	fs.StringVar(&c.webDir, "web", env.String("WEB_DIR", "web"), "directory of the page, served at / [WEB_DIR]")
 	fs.StringVar(&c.availability, "availability", env.String("AVAILABILITY", "Weekdays, office hours (not configured)."), "check_availability answer [AVAILABILITY]")
 	if err := env.Err(); err != nil {
@@ -86,6 +86,10 @@ func parse(args []string, getenv cfg.Getenv) (config, error) {
 		return c, err
 	}
 	c.idx = *idx
+	// An empty variable means the default, so turning chips off takes a word.
+	if c.suggestedFile == "none" {
+		c.suggestedFile = ""
+	}
 	switch c.provider {
 	case "ollama", "groq":
 	default:
