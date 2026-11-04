@@ -200,6 +200,15 @@ Whether each claim in an answer is supported by the retrieved sources. The oppos
 Using a second model call to grade an output (here: is the answer [grounded](#groundedness)?).
 Cheap and scalable, but a judge can be wrong too, so the judge itself is evaluated.
 
+### Eval
+
+Short for evaluation: a scored measurement of how well an AI system does its job, run over a
+dataset. A **test** checks that code is correct: one input, one expected output, pass or fail
+every time. An **eval** measures quality where the output isn't deterministic: it reports a
+score (such as [hit@k](#hit-at-k) over a [golden dataset](#golden-dataset), or a judge's
+verdicts) and compares it against a threshold chosen from a measured baseline. Evals live in
+`evals/`, apart from the unit tests, because some call models and are slower and not free.
+
 ### Golden dataset
 
 A fixed set of questions with known good answers and expected sources, used to score every change.
