@@ -7,6 +7,7 @@ export function initialState(config = {}) {
     config, // site settings from dist/config.js: names and message wording
     status: "idle", // idle | streaming | done | error
     question: "",
+    turn: "", // "ask" | "confirm": which kind of turn is (or was last) streaming
     thoughts: [], // [{source: "agent"|"model", text}]
     answer: "",
     conversationId: "",
@@ -21,6 +22,22 @@ export function initialState(config = {}) {
   };
 }
 
+// canStop: only an asked turn that's still streaming can be stopped. A
+// confirmation can't: its action may already have run, and Stop can't undo it.
+export function canStop(state) {
+  return state.status === "streaming" && state.turn === "ask";
+}
+
+// canRetry: after a retryable error, or after the visitor pressed Stop
+// (a wandering model often does better on a second try).
+export function canRetry(state) {
+  if (!state.question) return false;
+  return state.status === "stopped" || (state.status === "error" && state.error.retryable);
+}
+
+// The page's own events; everything else comes from the server's stream.
+const pageEvents = new Set(["ask", "confirm", "dismiss", "stop"]);
+
 // shownAnswer is what the answer area shows: the welcome until the first
 // question (or confirmation), then the current answer. The welcome is page
 // text: it never enters the state's answer, so it's never sent anywhere.
@@ -31,13 +48,24 @@ export function shownAnswer(state) {
 const updateProposals = (state, pred, change) =>
   state.proposals.map((p) => pred(p) ? { ...p, ...change } : p);
 
-// reduce returns a new state; the old one is never modified. "ask", "confirm"
-// and "dismiss" are the page's own events.
+// reduce returns a new state; the old one is never modified. "ask", "confirm",
+// "dismiss" and "stop" are the page's own events.
 export function reduce(state, name, data) {
+  // After Stop, whatever the aborted stream still delivers is ignored.
+  if (state.status === "stopped" && !pageEvents.has(name)) return state;
   switch (name) {
+    case "stop":
+      if (!canStop(state)) return state;
+      return {
+        ...state,
+        status: "stopped",
+        // Steps still running were cut short: no server figure will come.
+        cards: state.cards.map((c) => c.state === "active" ? { ...c, state: "skipped" } : c),
+      };
     case "ask":
       return {
         ...state,
+        turn: "ask",
         citations: [],
         status: "streaming",
         question: data.message,
@@ -105,6 +133,7 @@ export function reduce(state, name, data) {
       return {
         ...state,
         citations: [],
+        turn: "confirm",
         status: "streaming",
         question: `You confirmed: ${p.summary}`,
         thoughts: [],

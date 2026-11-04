@@ -21,6 +21,14 @@ const KIND = {
   rate_limit: "Rate limit",
 };
 
+// cardDuration is a card's time: the server's measurement once it arrives,
+// the page's live elapsed time while the step runs, or "stopped" for a step
+// cut short by Stop, which will never get a figure.
+export function cardDuration(card, elapsedMs) {
+  if (card.durationMs !== null) return formatDuration(card.durationMs);
+  return card.state === "active" ? `${formatDuration(elapsedMs)}…` : "stopped";
+}
+
 export function cardTitle(card) {
   const kind = KIND[card.kind] || card.kind;
   if (card.kind === "cache") return kind;

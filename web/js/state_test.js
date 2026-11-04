@@ -179,3 +179,62 @@ Deno.test("the welcome shows until the first question, then the answer replaces 
   s = reduce(s, "token", { text: "Hello" });
   assertEquals(shownAnswer(s), "Hello");
 });
+
+// Stop (step 6.0c): the visitor can end a turn that's wandering.
+Deno.test("Stop ends an asked turn, keeps what streamed, and offers Retry", async () => {
+  const { canStop, canRetry } = await import("./state.js");
+  let s = run([
+    ["ask", { message: "What is this site?" }],
+    ["step_start", { step_id: "s1", kind: "inference", label: "Inference" }],
+    ["thought", { text: "Hmm, let me think again.", source: "model" }],
+    ["token", { text: "This site" }],
+  ]);
+  assertEquals(canStop(s), true);
+  s = reduce(s, "stop", {});
+  assertEquals([s.status, s.error, s.answer, s.thoughts.length], ["stopped", null, "This site", 1]);
+  assertEquals(s.cards[0].state, "skipped");
+  assertEquals([canStop(s), canRetry(s)], [false, true]);
+});
+
+Deno.test("events that arrive after Stop are ignored", () => {
+  const s = run([
+    ["ask", { message: "Hi" }],
+    ["token", { text: "Hel" }],
+    ["stop", {}],
+    ["token", { text: "lo" }],
+    ["error", { code: "network", message: "aborted" }],
+    ["done", { conversation_id: "c_1" }],
+  ]);
+  assertEquals([s.status, s.answer, s.error, s.conversationId], ["stopped", "Hel", null, ""]);
+});
+
+Deno.test("Stop does nothing when idle, finished, or confirming an action", async () => {
+  const { canStop } = await import("./state.js");
+  const idle = initialState();
+  assertEquals([canStop(idle), reduce(idle, "stop", {})], [false, idle]);
+  const done = run([["ask", { message: "Hi" }], ["done", { conversation_id: "c_1" }]]);
+  assertEquals([canStop(done), reduce(done, "stop", {})], [false, done]);
+  // The action may already have run, and Stop can't undo it.
+  const confirming = run([
+    ["ask", { message: "Send a note" }],
+    ["confirm_request", {
+      action_id: "a1",
+      tool: "send_message",
+      summary: "Note",
+      expires_in_s: 60,
+      received_ms: 0,
+    }],
+    ["done", { conversation_id: "c_1" }],
+    ["confirm", { actionId: "a1" }],
+  ]);
+  assertEquals(confirming.status, "streaming");
+  assertEquals([canStop(confirming), reduce(confirming, "stop", {})], [false, confirming]);
+});
+
+Deno.test("Retry is offered after a retryable error or a Stop, never mid-stream", async () => {
+  const { canRetry } = await import("./state.js");
+  assertEquals(canRetry(initialState()), false);
+  assertEquals(canRetry(run([["ask", { message: "Hi" }]])), false);
+  assertEquals(canRetry(run([["ask", { message: "Hi" }], ["error", { code: "timeout" }]])), true);
+  assertEquals(canRetry(run([["ask", { message: "Hi" }], ["error", { code: "rate_limited" }]])), false);
+});

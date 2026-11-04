@@ -140,7 +140,19 @@ func (a *Agent) Turn(ctx context.Context, caller auth.Caller, req TurnRequest, w
 		return a.suggested(ctx, caller, req.SuggestedID, convID, w)
 	}
 	tl := &turnLog{conv: convID, outcome: "error"}
-	defer a.writeLog(tl)
+	// Runs before the deferred cancel(nil) above (defers run last-first), so
+	// ctx still says whether the deadline or the caller ended the turn.
+	defer func() {
+		if tl.outcome == "error" {
+			switch {
+			case errors.Is(context.Cause(ctx), errDeadline):
+				tl.outcome = "timeout"
+			case ctx.Err() != nil:
+				tl.outcome = "cancelled" // the visitor pressed Stop or left
+			}
+		}
+		a.writeLog(tl)
+	}()
 
 	if err := w.StepStart("retrieval", "retrieval", "Hybrid search"); err != nil {
 		return err
@@ -210,6 +222,7 @@ func (a *Agent) Turn(ctx context.Context, caller auth.Caller, req TurnRequest, w
 			return nil
 		})
 		if err != nil {
+			tl.inference += a.Clock.Now().Sub(started) // a stopped or slow model's time still counts
 			_ = w.StepEnd(stepID, "error", map[string]any{"error": err.Error()})
 			return a.fail(ctx, w, "model_unavailable", "the model couldn't answer right now")
 		}

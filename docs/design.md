@@ -650,6 +650,14 @@ Plan Phase 4 builds it.
 - **Session and errors:** the conversation id lives in `sessionStorage`, so a reload continues
   the conversation; errors show in the stream as a plain sentence per cause, with Retry when
   trying again can help, and the raw code only in the console and `data-code`.
+- **Stop (step 6.0c):** while an asked turn streams, a Stop button (and Esc) aborts the request.
+  The server cancels the turn when the client leaves, the model call with it (live: Ollama logs
+  `cancel task` at once), and a cancelled turn is never saved to the conversation. The page
+  keeps the reasoning and any partial answer, shows the `stopped` wording rather than an error,
+  offers Retry, and ignores whatever the aborted stream still delivers; steps cut short show
+  "stopped" instead of a time. A confirmation turn can't be stopped: its action may already
+  have run. The server's one-line turn log says `outcome=cancelled` or `outcome=timeout`, with
+  the model's time so far.
 - **Site config (build time):** `make site` (`orchestrator/cmd/siteconfig`) writes
   `web/dist/config.js` from `SITE_NAME`, `ASSISTANT_NAME` (default "Context Concierge", also
   used in the model's system prompt) and `MESSAGES_FILE`, an optional JSON file overriding the

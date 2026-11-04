@@ -4,11 +4,12 @@
 //
 // Model output is only ever set with textContent, never as HTML, so text a
 // prompt injection makes the model write can't become markup or script.
-import { getSuggested, postChat } from "./client.js";
+import { failureEvent, getSuggested, postChat } from "./client.js";
 import { linkify, sources } from "./cite.js";
 import { confirmBody, secondsLeft } from "./confirm.js";
-import { cardDetails, cardTitle, formatDuration } from "./format.js";
-import { initialState, reduce, shownAnswer } from "./state.js";
+import { cardDetails, cardDuration, cardTitle } from "./format.js";
+import { canRetry, canStop, initialState, reduce, shownAnswer } from "./state.js";
+import { text } from "./messages.js";
 // Built by `make site` (orchestrator/cmd/siteconfig) from SITE_NAME,
 // ASSISTANT_NAME, OWNER_NAME, OWNER_FIRST_NAME and MESSAGES_FILE; shown as
 // text only.
@@ -24,6 +25,7 @@ const els = {
   answer: $("answer"),
   status: $("status"),
   retry: $("retry"),
+  stop: $("stop"),
   cards: $("cards"),
   noCards: $("no-cards"),
   cardTemplate: $("card-template"),
@@ -82,10 +84,13 @@ function render() {
     ? "Thinking…"
     : state.status === "error"
     ? `Error: ${state.error.message}`
+    : state.status === "stopped"
+    ? text("stopped", site)
     : "";
   els.send.disabled = state.status === "streaming";
   els.status.dataset.code = state.error ? state.error.code : "";
-  els.retry.hidden = !(state.status === "error" && state.error.retryable && state.question);
+  els.retry.hidden = !canRetry(state);
+  els.stop.hidden = !canStop(state);
   renderCards();
   renderProposals();
   els.thoughts.scrollTop = els.thoughts.scrollHeight;
@@ -137,11 +142,11 @@ function renderCards() {
     }
     li.dataset.state = card.state;
     li.querySelector('[data-role="title"]').textContent = cardTitle(card);
-    const done = card.durationMs !== null;
-    if (!done && !cardStarted.has(card.id)) cardStarted.set(card.id, performance.now());
-    li.querySelector('[data-role="duration"]').textContent = done
-      ? formatDuration(card.durationMs)
-      : `${formatDuration(performance.now() - cardStarted.get(card.id))}…`;
+    if (!cardStarted.has(card.id)) cardStarted.set(card.id, performance.now());
+    li.querySelector('[data-role="duration"]').textContent = cardDuration(
+      card,
+      performance.now() - cardStarted.get(card.id),
+    );
     const details = li.querySelector('[data-role="details"]');
     const lines = cardDetails(card, site);
     if (
@@ -192,7 +197,7 @@ function renderProposals() {
 // Active cards show their elapsed time ticking until the server's figure
 // arrives; tick only while something is running.
 setInterval(() => {
-  if (state.cards.some((c) => c.durationMs === null)) renderCards();
+  if (state.cards.some((c) => c.state === "active" && c.durationMs === null)) renderCards();
   if (state.proposals.some((p) => p.status === "pending")) renderProposals();
 }, 100);
 
@@ -215,12 +220,17 @@ function apply(name, data) {
 // lastRequest is what Retry repeats: a question, or a confirmation (safe to
 // resend, since a pending action runs at most once).
 let lastRequest = null;
+// Aborts the request in flight when the visitor presses Stop; the server
+// then cancels the turn, and a cancelled turn is never saved (step 6.0c).
+let inFlight = null;
 
 async function send(start, startData, body) {
   if (state.status === "streaming") return;
   lastRequest = [start, startData, body];
   cardStarted.clear();
   apply(start, startData);
+  const controller = new AbortController();
+  inFlight = controller;
   try {
     await postChat(body(), (name, data) => {
       // The reducer is pure, so the page supplies the arrival time the
@@ -231,14 +241,17 @@ async function send(start, startData, body) {
           sessionStorage.setItem("conversation_id", data.conversation_id);
         } catch { /* storage unavailable: the next question starts afresh */ }
       }
-    });
+    }, { signal: controller.signal });
     if (state.status === "streaming") {
       apply("error", { code: "incomplete", message: "the stream ended early" });
     }
   } catch (err) {
-    // No HTTP status means the request never got an answer: the server is
-    // unreachable ("Failed to fetch"). The raw text goes to the console only.
-    apply("error", { code: err.status ? "http" : "network", status: err.status, message: err.message });
+    // An abort is Stop, already applied; anything else is shown as a plain
+    // sentence, with the raw text in the console only.
+    const failure = failureEvent(err);
+    if (failure) apply("error", failure);
+  } finally {
+    if (inFlight === controller) inFlight = null;
   }
   if (state.error) console.warn(`chat error ${state.error.code}`, state.error);
 }
@@ -256,6 +269,16 @@ els.form.addEventListener("submit", (e) => {
 });
 
 els.retry.addEventListener("click", () => lastRequest && send(...lastRequest));
+
+function stop() {
+  if (!canStop(state) || !inFlight) return;
+  inFlight.abort();
+  apply("stop", {});
+}
+els.stop.addEventListener("click", stop);
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") stop();
+});
 // Suggestion chips: each sends its id, and the server streams the stored
 // answer with no model call.
 getSuggested().then((list) => {

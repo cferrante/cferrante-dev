@@ -97,3 +97,10 @@ Deno.test("the retrieval card uses the configured wording (MESSAGES_FILE)", () =
     "1 snippet (score 0.033)",
   ]);
 });
+
+Deno.test("a card's time: the server's figure, live elapsed, or stopped", async () => {
+  const { cardDuration } = await import("./format.js");
+  assertEquals(cardDuration({ state: "ok", durationMs: 8.2 }, 99), "8.2 ms");
+  assertEquals(cardDuration({ state: "active", durationMs: null }, 1500), "1.5 s…");
+  assertEquals(cardDuration({ state: "skipped", durationMs: null }, 1500), "stopped");
+});

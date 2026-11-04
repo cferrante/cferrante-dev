@@ -40,6 +40,7 @@ var specs = map[string]spec{
 	"action_not_found":    msg("That request is no longer available. Ask again if you still want it."),
 	"not_authorized":      msg("You can no longer do that. Please sign in again."),
 	"action_failed":       msg("That didn't go through, and it wasn't retried. Please try again later."),
+	"stopped":             msg("Stopped. Press Retry for a fresh answer, or ask something else."),
 
 	"collection":    {def: "portfolio"},
 	"source_one":    {def: "source"},

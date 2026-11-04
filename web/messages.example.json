@@ -14,6 +14,7 @@
   "action_not_found": "That request is no longer available. Ask again if you still want it.",
   "not_authorized": "You can no longer do that. Please sign in again.",
   "action_failed": "That didn't go through, and it wasn't retried. Please try again later.",
+  "stopped": "Stopped. Press Retry for a fresh answer, or ask something else.",
   "collection": "portfolio",
   "source_one": "source",
   "source_other": "sources",

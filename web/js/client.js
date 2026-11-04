@@ -36,6 +36,14 @@ export async function postChat(body, onEvent, { fetchFn = fetch, signal } = {}) 
   }
 }
 
+// failureEvent turns a postChat rejection into the page's error event, or
+// null for an abort: Stop is the visitor's choice, not a failure. No HTTP
+// status means the request never got an answer ("Failed to fetch").
+export function failureEvent(err) {
+  if (err && err.name === "AbortError") return null;
+  return { code: err.status ? "http" : "network", status: err.status, message: err.message };
+}
+
 // getSuggested lists the suggestion chips for this visitor. Chips are
 // optional, so any failure gives none rather than an error.
 export async function getSuggested({ fetchFn = fetch } = {}) {
