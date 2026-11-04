@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -545,5 +546,48 @@ func TestMessagesFileWordsTheNarration(t *testing.T) {
 	c, _ = parse(append(args, "-messages", bad), noEnv)
 	if _, _, err := setup(context.Background(), c, &fake.Model{}, &bytes.Buffer{}, nil); err == nil || !strings.Contains(err.Error(), "{exerpts}") {
 		t.Errorf("bad file: err = %v, want startup stopped naming {exerpts}", err)
+	}
+}
+
+// Step 6.0b: the owner settings and style file reach the prompt, a bad one
+// stops startup, and the prompt's hash is logged so a run can be traced to
+// the exact rules it used.
+func TestDevBuildsThePersonaAndLogsThePromptHash(t *testing.T) {
+	dir := t.TempDir()
+	style := filepath.Join(dir, "style.md")
+	os.WriteFile(style, []byte("Answer {owner_first}'s questions first."), 0o644)
+	env := envOf(map[string]string{"OWNER_NAME": "Ada Lovelace", "OWNER_FIRST_NAME": "Ada", "OWNER_PRONOUNS": "she/her", "PROMPT_STYLE_FILE": style})
+	c, err := parse([]string{"-embedder", "hash", "-corpus", "../../corpus/testdata/corpus", "-suggested", "none", "-index", filepath.Join(dir, "dev.idx")}, env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := &fake.Model{Name: "ollama", Events: []model.Event{{Kind: model.Text, Text: "Hi."}}}
+	var log bytes.Buffer
+	h, cleanup, err := setup(context.Background(), c, m, &log, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	if !regexp.MustCompile(`prompt sha256=[0-9a-f]{12}\b`).MatchString(log.String()) {
+		t.Errorf("log lacks the prompt hash:\n%s", log.String())
+	}
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+	resp, err := http.Post(srv.URL+"/chat", "application/json", strings.NewReader(`{"message":"Hi"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	io.Copy(io.Discard, resp.Body)
+	resp.Body.Close()
+	sys := m.Requests()[0].System
+	for _, want := range []string{"Ada Lovelace's website", "she/her", "Answer Ada's questions first."} {
+		if !strings.Contains(sys, want) {
+			t.Errorf("system prompt lacks %q:\n%s", want, sys)
+		}
+	}
+
+	os.WriteFile(style, []byte("Mention {score}."), 0o644)
+	if _, _, err := setup(context.Background(), c, m, &bytes.Buffer{}, nil); err == nil || !strings.Contains(err.Error(), "{score}") {
+		t.Errorf("bad style file: err = %v", err)
 	}
 }

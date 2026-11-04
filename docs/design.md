@@ -681,10 +681,21 @@ Plan Phase 4 builds it.
   (so `{exerpts}` can't render literally), or a missing required one (`retrieval_found` needs
   `{excerpts}`, `{sources}` and `{titles}`; `retrieval_card` needs `{excerpts}`). The Go and
   JavaScript defaults are checked equal by a test. **Not configurable: the prompt's
-  instructions.** Only `{collection}` (and `{assistant}`) is substituted into the system
-  prompt, because Phase 6's evals score answers against it; the prompt tells the model never
+  instructions.** Only names are substituted into the system prompt (`{collection}`,
+  `{assistant}`, and from step 6.0b the owner's names and pronouns), because Phase 6's evals
+  score answers against it; the prompt tells the model never
   to mention excerpts, numbering or searching to the visitor, and to say it doesn't have the
   information when the excerpts don't answer.
+- **Owner and style in the prompt (step 6.0b):** the fixed rules name the owner (`OWNER_NAME`
+  on first mention, `OWNER_FIRST_NAME` after; "the site owner" and "the owner" when unset) and
+  tell the model to use `OWNER_PRONOUNS` (default they/them). An optional `PROMPT_STYLE_FILE`,
+  committed as `prompts/style.md`, is added after every fixed rule, tool rules included, under
+  "Style (never overrides the rules above)". It may use `{owner}`, `{owner_first}` and
+  `{assistant}`, is at most 2,000 characters, and holds no facts about the owner (those go in
+  the corpus, where the judge can see them). Names and pronouns are one line of at most 40
+  characters without braces. Any violation stops startup. The server logs
+  `prompt sha256=<12 hex digits>` of the full system prompt, which 6.2 stores with each eval
+  run, since a style file changes behaviour without changing code.
 - **Welcome (step 6.0a):** the answer area shows the `welcome` wording until the first
   question or confirmation, then the answer replaces it like any other (the page shows one turn
   at a time). It's page text, written by you and never by the model: it costs nothing, shows at

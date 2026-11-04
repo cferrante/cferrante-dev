@@ -78,6 +78,9 @@ type Agent struct {
 	Log io.Writer
 	// AssistantName is what the model is told it is; default "Context Concierge".
 	AssistantName string
+	// Persona names the owner in the prompt and adds an optional style note
+	// (step 6.0b); the zero value is "the site owner", they/them, no note.
+	Persona Persona
 	// Wording is the visitor-facing retrieval wording (MESSAGES_FILE); the
 	// zero value is the defaults.
 	Wording wording.Wording
@@ -179,11 +182,8 @@ func (a *Agent) Turn(ctx context.Context, caller auth.Caller, req TurnRequest, w
 	// MaxToolRounds rounds (design §3). Layer 1 of authorization: the model
 	// is only shown the tools this caller may use (design §6).
 	mreq := prompt(chunks, history, req.Message)
-	mreq.System = named(mreq.System, a.AssistantName, a.Wording.Get("collection"))
 	mreq.Tools = a.Tools.For(caller)
-	if len(mreq.Tools) > 0 {
-		mreq.System += toolGuidance
-	}
+	mreq.System = a.system(len(mreq.Tools) > 0)
 	cites := newCiter(len(chunks))
 	var answer strings.Builder
 	toolSteps := 0

@@ -310,6 +310,9 @@ func flat(s string) string { return strings.Join(strings.Fields(s), " ") }
 func TestThePromptPrefixIsStableAcrossTurns(t *testing.T) {
 	for _, caller := range []auth.Caller{visitor, invitee} {
 		h := newToolHarness(answer("ok"), answer("ok"))
+		// A style note (step 6.0b) is part of the prefix and must not vary either.
+		h.agent.Persona = must(NewPersona("Ada Lovelace", "Ada", "she/her", "s.md",
+			files(map[string]string{"s.md": "Answer direct questions first, {owner_first}'s way."})))
 		h.ret.chunks = twoChunks
 		h.turn(t, context.Background(), caller, TurnRequest{Message: "What is A?"})
 		h.clock.Advance(time.Hour)
