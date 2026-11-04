@@ -51,6 +51,8 @@ type config struct {
 	deadline                          time.Duration // whole-turn limit
 	webDir                            string        // the page (design §14)
 	assistant                         string        // the assistant's name, in the system prompt
+	ownerName, ownerFirst, pronouns   string        // the owner, in the system prompt (step 6.0b)
+	styleFile                         string        // optional style note after the fixed rules (step 6.0b)
 	suggestedFile                     string        // stored answers for the suggestion chips (design §14)
 	messagesFile                      string        // visitor wording overrides, shared with the page build (design §14)
 	provider, groqModel, groqKeyParam string        // CHAT_PROVIDER: ollama | groq
@@ -78,6 +80,10 @@ func parse(args []string, getenv cfg.Getenv) (config, error) {
 	fs.StringVar(&c.contact, "contact", env.String("CONTACT_OPTIONS", "Invitees can send a message through this chat."), "get_contact_options answer [CONTACT_OPTIONS]")
 	fs.DurationVar(&c.deadline, "turn-deadline", env.Duration("TURN_DEADLINE", 5*time.Minute), "whole-turn limit; generous because CPU inference is slow [TURN_DEADLINE]")
 	fs.StringVar(&c.assistant, "assistant", env.String("ASSISTANT_NAME", agent.DefaultAssistantName), "the assistant's name, also shown by the page [ASSISTANT_NAME]")
+	fs.StringVar(&c.ownerName, "owner", env.String("OWNER_NAME", ""), "the owner's full name, in the system prompt and the welcome [OWNER_NAME]")
+	fs.StringVar(&c.ownerFirst, "owner-first", env.String("OWNER_FIRST_NAME", ""), "the owner's first name [OWNER_FIRST_NAME]")
+	fs.StringVar(&c.pronouns, "pronouns", env.String("OWNER_PRONOUNS", ""), "pronouns the model uses for the owner; unset = they/them [OWNER_PRONOUNS]")
+	fs.StringVar(&c.styleFile, "style", env.String("PROMPT_STYLE_FILE", ""), "optional style note added after the fixed rules of the system prompt [PROMPT_STYLE_FILE]")
 	fs.StringVar(&c.suggestedFile, "suggested", env.String("SUGGESTED_FILE", "orchestrator/corpus/testdata/suggested.json"), "stored answers for the suggestion chips; none for no chips [SUGGESTED_FILE]")
 	fs.StringVar(&c.messagesFile, "messages", env.String("MESSAGES_FILE", ""), "JSON file overriding the visitor wording; make site builds the same file into the page [MESSAGES_FILE]")
 	fs.StringVar(&c.webDir, "web", env.String("WEB_DIR", "web"), "directory of the page, served at / [WEB_DIR]")
@@ -114,6 +120,10 @@ func parse(args []string, getenv cfg.Getenv) (config, error) {
 func setup(ctx context.Context, c config, m model.Model, logw io.Writer, newTitan func() (embed.Invoker, error)) (http.Handler, func(), error) {
 	// Checked before the index is built, so a typo fails fast.
 	words, err := wording.Load(c.messagesFile, os.ReadFile)
+	if err != nil {
+		return nil, nil, err
+	}
+	persona, err := agent.NewPersona(c.ownerName, c.ownerFirst, c.pronouns, c.styleFile, os.ReadFile)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -163,7 +173,9 @@ func setup(ctx context.Context, c config, m model.Model, logw io.Writer, newTita
 	a := &agent.Agent{Model: m, Retriever: r, Store: agent.NewMemoryStore(), Clock: clock.Real{},
 		Tools:   tools.New(tools.Static{ContactOptions: c.contact, Availability: c.availability}, outbox),
 		Pending: tools.NewMemoryPending(), Deadline: c.deadline, AssistantName: c.assistant, Log: logw, Wording: words,
-		Suggestions: store}
+		Suggestions: store, Persona: persona}
+	// Identifies the exact rules this server's answers came from (step 6.0b).
+	fmt.Fprintf(logw, "prompt sha256=%s\n", a.PromptHash())
 	mux := http.NewServeMux()
 	mux.Handle("/chat", &server.Chat{Agent: a, Auth: auth.Fixed(caller), Clock: clock.Real{}})
 	mux.Handle("/", server.Static(c.webDir))
