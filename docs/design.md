@@ -397,12 +397,21 @@ finishes and reported via the `judge` event. Input: the answer and the retrieved
 {
   "verdict": "grounded | partially_grounded | ungrounded",
   "unsupported_claims": ["string"],
+  "answers_question": "yes | partly | no | not_applicable",
   "reasoning": "string (logged, not shown)"
 }
 ```
 
 - **[Grounded](concepts.md#groundedness)** means every factual claim is supported by a retrieved chunk. Small talk and
-  questions back to the visitor are not claims.
+  questions back to the visitor are not claims, so a polite decline is grounded.
+- `unsupported_claims` is empty exactly when the verdict is `grounded`; anything else is refused
+  as an inconsistent verdict, as is a value outside the lists above.
+- `answers_question` compares the answer with an expected answer when one is given (the golden
+  set's `expected_answer`, step 6.3); without one (the live judge) it must be `not_applicable`.
+- The judge (`orchestrator/judge`) sees the sources numbered as the answer turn numbered them, so
+  a citation `[2]` means the same chunk to both. It uses Groq's strict structured output (step
+  5.4) on `JUDGE_MODEL` (default `openai/gpt-oss-20b`), a smaller model than the one it grades.
+  A missing, malformed or inconsistent verdict is an error, never a pass.
 - **UI:** ✓ grounded, ⚠ partially grounded (lists claims), ✗ ungrounded (warning banner). v1 never
   silently retracts an answer; it labels it.
 - Answers for suggested questions are judged at build time and must be `grounded` to ship.
