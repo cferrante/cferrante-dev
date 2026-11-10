@@ -28,6 +28,7 @@ type Settings struct {
 	OllamaModel string
 	Dim         int // 0: the embedder's default (768 ollama, 512 titan, 256 hash)
 	TitanModel  string
+	EmbedCache  string // the cache file when Embedder is cache
 }
 
 // Flags registers the settings as flags whose defaults come from env:
@@ -38,11 +39,12 @@ func Flags(fs *flag.FlagSet, env *config.Env) *Settings {
 	fs.StringVar(&s.CorpusDirs, "corpus", env.String("CORPUS_DIRS", "orchestrator/corpus/testdata/corpus"), "corpus folders, colon-separated, e.g. corpus/public:corpus/private [CORPUS_DIRS]")
 	fs.StringVar(&s.IndexPath, "index", env.String("INDEX_PATH", "build/dev/corpus.idx"), "index file to write; the sidecar goes to <index>.json [INDEX_PATH]")
 	fs.IntVar(&s.ChunkTarget, "target", env.Int("CHUNK_TARGET", 1000), "preferred chunk size in bytes [CHUNK_TARGET]")
-	fs.StringVar(&s.Embedder, "embedder", env.String("EMBEDDER", "ollama"), "ollama, titan (Bedrock), or hash (no model; tests and offline) [EMBEDDER]")
+	fs.StringVar(&s.Embedder, "embedder", env.String("EMBEDDER", "ollama"), "ollama, titan (Bedrock), hash (no model; tests and offline) or cache (saved vectors; CI) [EMBEDDER]")
 	fs.StringVar(&s.OllamaURL, "ollama", env.String("OLLAMA_BASE_URL", embed.OllamaBaseURL), "Ollama's base URL [OLLAMA_BASE_URL]")
 	fs.StringVar(&s.OllamaModel, "embed-model", env.String("EMBED_MODEL", "nomic-embed-text"), "Ollama embedding model [EMBED_MODEL]")
 	fs.IntVar(&s.Dim, "embed-dim", env.Int("EMBED_DIM", 0), "embedding size; 0 = 768 for ollama, 512 for titan, 256 for hash [EMBED_DIM]")
 	fs.StringVar(&s.TitanModel, "titan-model", env.String("TITAN_MODEL", embed.TitanModel), "Bedrock embedding model when -embedder=titan [TITAN_MODEL]")
+	fs.StringVar(&s.EmbedCache, "embed-cache", env.String("EMBED_CACHE", "evals/embeddings/titan-512.json"), "embedding cache file when -embedder=cache (make embed-cache writes it) [EMBED_CACHE]")
 	return s
 }
 
@@ -54,6 +56,8 @@ func (s Settings) NewEmbedder(newTitan func() (embed.Invoker, error)) (embed.Emb
 		return embed.Ollama{BaseURL: s.OllamaURL, Name: s.OllamaModel, D: dimOr(s.Dim, 768)}, nil
 	case "hash":
 		return embed.Hash{D: dimOr(s.Dim, 256)}, nil
+	case "cache":
+		return embed.LoadCache(s.EmbedCache)
 	case "titan":
 		if newTitan == nil {
 			return nil, fmt.Errorf("embedder titan: no Bedrock client")
@@ -64,7 +68,7 @@ func (s Settings) NewEmbedder(newTitan func() (embed.Invoker, error)) (embed.Emb
 		}
 		return embed.NewTitan(api, s.TitanModel, dimOr(s.Dim, 512))
 	}
-	return nil, fmt.Errorf("unknown embedder %q: want ollama, titan or hash", s.Embedder)
+	return nil, fmt.Errorf("unknown embedder %q: want ollama, titan, hash or cache", s.Embedder)
 }
 
 func dimOr(d, def int) int {

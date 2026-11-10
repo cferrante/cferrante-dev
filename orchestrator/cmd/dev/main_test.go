@@ -93,7 +93,7 @@ var allEnv = map[string]string{
 	"CONTACT_OPTIONS": "Use the form.", "AVAILABILITY": "Tue–Thu", "TURN_DEADLINE": "90s",
 	"WEB_DIR": "/site", "ASSISTANT_NAME": "Concierge", "SUGGESTED_FILE": "/s.json",
 	"CHAT_PROVIDER": "groq", "GROQ_MODEL": "openai/gpt-oss-20b", "GROQ_KEY_PARAM": "/k", "AWS_PROFILE": "p", "AWS_REGION": "eu-west-1",
-	"BEDROCK_MODEL": "us.amazon.nova-micro-v1:0", "TITAN_MODEL": "amazon.titan-x", "CHUNK_TARGET": "600", "MESSAGES_FILE": "/m.json",
+	"BEDROCK_MODEL": "us.amazon.nova-micro-v1:0", "TITAN_MODEL": "amazon.titan-x", "EMBED_CACHE": "/e.json", "CHUNK_TARGET": "600", "MESSAGES_FILE": "/m.json",
 }
 
 func TestEnvironmentSetsEveryOption(t *testing.T) {
@@ -102,7 +102,7 @@ func TestEnvironmentSetsEveryOption(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := config{addr: "127.0.0.1:9999", idx: indexing.Settings{CorpusDirs: "/c:/d", IndexPath: "/i.idx", ChunkTarget: 600,
-		Embedder: "hash", OllamaURL: "http://gpu-box:11434", OllamaModel: "mxbai-embed-large", Dim: 1024, TitanModel: "amazon.titan-x"}, model: "llama3.1", effort: "medium", invitee: true,
+		Embedder: "hash", OllamaURL: "http://gpu-box:11434", OllamaModel: "mxbai-embed-large", Dim: 1024, TitanModel: "amazon.titan-x", EmbedCache: "/e.json"}, model: "llama3.1", effort: "medium", invitee: true,
 		contact: "Use the form.", availability: "Tue–Thu", deadline: 90 * time.Second, webDir: "/site", assistant: "Concierge", suggestedFile: "/s.json", messagesFile: "/m.json",
 		provider: "groq", groqModel: "openai/gpt-oss-20b", groqKeyParam: "/k", awsProfile: "p", awsRegion: "eu-west-1", bedrockModel: "us.amazon.nova-micro-v1:0"}
 	if c != want {
