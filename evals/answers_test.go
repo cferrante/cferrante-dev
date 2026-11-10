@@ -64,7 +64,7 @@ var (
 		ExpectedAnswer: "Politely declines."}
 	secret = Item{ID: "h-1", File: "heldout.jsonl", Question: "What are her rates?", Caller: "invitee",
 		ExpectedChunks: []string{"rates#summary"}, ExpectedAnswer: "Quotes the private rate."}
-	chunks = []agent.Chunk{{ID: "exp-vartec#auto-dialer", Text: "At Vartec…"}, {ID: "exp-vartec#teradata-migration", Text: "Teradata…"}}
+	chunks = []agent.Chunk{{ID: "exp-vartec#auto-dialer", Title: "Senior Programmer, Vartec Telecom", Text: "At Vartec…"}, {ID: "exp-vartec#teradata-migration", Text: "Teradata…"}}
 	pass   = judge.Result{Verdict: judge.Grounded, AnswersQuestion: "yes", Model: "judge-model"}
 )
 
@@ -89,7 +89,7 @@ func TestEachQuestionIsAnsweredAsItsCallerAndJudgedOnItsOwnSources(t *testing.T)
 	}
 	in := j.got[0]
 	if in.Expected != telecom.ExpectedAnswer || in.Answer != got[0].Text || len(in.Sources) != 2 ||
-		in.Sources[0].ID != "exp-vartec#auto-dialer" || in.Sources[1].Text != "Teradata…" {
+		in.Sources[0].ID != "exp-vartec#auto-dialer" || in.Sources[0].Title != "Senior Programmer, Vartec Telecom" || in.Sources[1].Text != "Teradata…" {
 		t.Errorf("judge input %+v", in)
 	}
 	if strings.Join(got[0].Retrieved, ",") != "exp-vartec#auto-dialer,exp-vartec#teradata-migration" {

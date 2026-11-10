@@ -119,7 +119,7 @@ func (r *AnswerRunner) one(ctx context.Context, it Item) (a Answer) {
 	sources := make([]judge.Source, len(chunks))
 	for i, c := range chunks {
 		a.Retrieved = append(a.Retrieved, c.ID)
-		sources[i] = judge.Source{ID: c.ID, Text: c.Text}
+		sources[i] = judge.Source{ID: c.ID, Title: c.Title, Text: c.Text}
 	}
 	if a.Err != "" {
 		return a
