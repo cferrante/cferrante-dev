@@ -7,7 +7,7 @@ GO_PKGS := $(shell go list ./... 2>/dev/null)
 SH_FILES := $(shell find . -name '*.sh' -not -path './.git/*')
 SHELLCHECK ?= shellcheck
 
-.PHONY: help tools css site css-check jstest test corpus-check engine-test bench-engine bench-engine-scale bench-go dev smoke-groq smoke-groq-schema measure-groq-cache smoke-bedrock smoke-titan lint fmt docs-check hitk embed-cache hitk-gate
+.PHONY: help tools css site css-check jstest test corpus-check engine-test bench-engine bench-engine-scale bench-go dev smoke-groq smoke-groq-schema measure-groq-cache smoke-bedrock smoke-titan lint fmt docs-check hitk embed-cache hitk-gate smoke-judge
 
 ENGINE_BUILD := build/engine
 ENGINE_RELEASE := build/engine-release
@@ -95,6 +95,9 @@ smoke-bedrock: ## Call the real Bedrock API once (needs aws sso login; about $0.
 
 smoke-titan: ## Embed three texts with the real Titan v2 (needs aws sso login; far below $0.0001)
 	LIVE_TITAN=1 go test -count=1 -run TestLiveTitan -v ./orchestrator/embed/
+
+smoke-judge: ## Run the judge on Groq: a known-bad answer must not be grounded (needs aws sso login; free tier)
+	LIVE_GROQ=1 go test -count=1 -run TestLiveJudge -v ./orchestrator/judge/
 
 lint: tools ## Check formatting, run go vet, shellcheck and deno lint
 	@unformatted=$$(gofmt -l .); \
