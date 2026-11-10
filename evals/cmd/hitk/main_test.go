@@ -19,7 +19,7 @@ func TestReportsEachQuestionAndTheScore(t *testing.T) {
 		`{"id":"g-decline","question":"What's the weather in Paris?","caller":"anonymous"}`,
 	}, "\n")), 0o644)
 	var out bytes.Buffer
-	err := run([]string{"-embedder", "hash", "-corpus", "../../testdata/corpus", "-index", filepath.Join(dir, "e.idx"), "-golden", golden}, func(string) string { return "" }, &out, nil)
+	err := run([]string{"-embedder", "hash", "-corpus", "../../testdata/corpus", "-index", filepath.Join(dir, "e.idx"), "-golden", golden, "-results", ""}, func(string) string { return "" }, &out, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,7 +36,7 @@ func TestReportsEachQuestionAndTheScore(t *testing.T) {
 }
 
 func TestNoGoldenFilesIsAnError(t *testing.T) {
-	err := run([]string{"-embedder", "hash", "-corpus", "../../testdata/corpus", "-index", filepath.Join(t.TempDir(), "e.idx"), "-golden", filepath.Join(t.TempDir(), "*.jsonl")}, func(string) string { return "" }, &bytes.Buffer{}, nil)
+	err := run([]string{"-embedder", "hash", "-corpus", "../../testdata/corpus", "-index", filepath.Join(t.TempDir(), "e.idx"), "-golden", filepath.Join(t.TempDir(), "*.jsonl"), "-results", ""}, func(string) string { return "" }, &bytes.Buffer{}, nil)
 	if err == nil || !strings.Contains(err.Error(), "no golden files") {
 		t.Errorf("err = %v", err)
 	}
@@ -50,7 +50,7 @@ func TestScoresEachGoldenFileSeparately(t *testing.T) {
 	os.WriteFile(main, []byte(`{"id":"g-hit","question":"Which tool parses telephone call records from switches?","caller":"anonymous","expected_chunks":["relay#summary"]}`), 0o644)
 	os.WriteFile(held, []byte(`{"id":"h-miss","question":"How are kiln firings scheduled for pottery studios?","caller":"anonymous","expected_chunks":["spindle#summary"]}`), 0o644)
 	var out bytes.Buffer
-	err := run([]string{"-embedder", "hash", "-corpus", "../../testdata/corpus", "-index", filepath.Join(dir, "e.idx"), "-golden", main + ":" + held}, func(string) string { return "" }, &out, nil)
+	err := run([]string{"-embedder", "hash", "-corpus", "../../testdata/corpus", "-index", filepath.Join(dir, "e.idx"), "-golden", main + ":" + held, "-results", ""}, func(string) string { return "" }, &out, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
