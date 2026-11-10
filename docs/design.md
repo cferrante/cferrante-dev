@@ -503,6 +503,13 @@ Both are JSON Lines (one JSON object per line), readable with Go's standard libr
  "tags":["projects","go"]}
 ```
 
+Invitee questions, whose `expected_answer` holds private facts, live in the private repo's
+`golden/` folder (cloned into `corpus/private/golden/`), which the indexer never reads. A question
+with no `expected_chunks` is one the answer should decline; hit@k skips it and 6.3 scores the
+answer. `make hitk` (`evals/cmd/hitk`) indexes `CORPUS_DIRS`, searches each question with its
+caller's access mask and prints ✓/✗ per question and hit@5. An expected chunk the index lacks,
+or one the caller may not see, stops the run: it's a typo or a broken question, not a miss.
+
 **Adversarial** ([red-team](concepts.md#red-teaming) cases, `evals/adversarial/*.jsonl`):
 
 ```json

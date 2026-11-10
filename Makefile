@@ -7,7 +7,7 @@ GO_PKGS := $(shell go list ./... 2>/dev/null)
 SH_FILES := $(shell find . -name '*.sh' -not -path './.git/*')
 SHELLCHECK ?= shellcheck
 
-.PHONY: help tools css site css-check jstest test corpus-check engine-test bench-engine bench-engine-scale bench-go dev smoke-groq smoke-groq-schema measure-groq-cache smoke-bedrock smoke-titan lint fmt docs-check
+.PHONY: help tools css site css-check jstest test corpus-check engine-test bench-engine bench-engine-scale bench-go dev smoke-groq smoke-groq-schema measure-groq-cache smoke-bedrock smoke-titan lint fmt docs-check hitk
 
 ENGINE_BUILD := build/engine
 ENGINE_RELEASE := build/engine-release
@@ -39,6 +39,9 @@ endif
 	infra/bootstrap/aws/secret_test.sh
 	scripts/fetch-tools_test.sh
 	scripts/check-css_test.sh
+
+hitk: ## Golden set retrieval check: hit@5 per question over CORPUS_DIRS (EMBEDDER from .env)
+	go run ./evals/cmd/hitk $(HITK_FLAGS)
 
 corpus-check: ## Fail if a tracked file would publish invitee-only documents
 	go run ./orchestrator/cmd/corpuscheck
