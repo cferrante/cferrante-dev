@@ -28,4 +28,4 @@ automated decisions. Colleen built this site's assistant this way.
 ## Languages
 
 TypeScript, Go, PHP (Laravel), Ruby on Rails, C++, C, C#, Java, JavaScript, Bash, and SQL
-(PostgreSQL, MySQL, Teradata).
+(PostgreSQL, MySQL, SQL Server, Oracle, Teradata).
