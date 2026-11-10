@@ -1,5 +1,5 @@
 ---
-title: "Senior Developer (Contract), Thomson Reuters Tax & Accounting (Feb 2004 – Apr 2005)"
+title: Senior Developer (Contract), Thomson Reuters Tax & Accounting (Feb 2004 – Apr 2005)
 url: /experience/thomson-reuters
 access: public
 ---

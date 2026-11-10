@@ -1,5 +1,5 @@
 ---
-title: "Senior Programmer, Vartec Telecom (Jan 2001 – Feb 2004)"
+title: Senior Programmer, Vartec Telecom (Jan 2001 – Feb 2004)
 url: /experience/vartec
 access: public
 ---

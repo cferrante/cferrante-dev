@@ -12,7 +12,8 @@ This repo is public. The access mask keeps invitee chunks out of a visitor's cha
 `corpus/` lacks `access: public`, if anything under `corpus/private/` is tracked, or if any
 other tracked Markdown file has an `access:` other than `public`.
 
-Each document is Markdown with front matter, one `key: value` per line:
+Each document is Markdown with front matter, one `key: value` per line. It is not YAML: values
+are taken literally, so write them without quotes (a quoted value stops the build):
 
 ```
 ---
