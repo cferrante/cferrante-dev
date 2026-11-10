@@ -220,7 +220,7 @@ type fileScore struct {
 // appendResult adds one JSON line per run, so later runs (another embedder,
 // a corpus edit) compare against earlier ones by commit.
 func appendResult(path, model string, k int, files map[string]fileScore) error {
-	commit, dirty := gitState()
+	commit, dirty := gitState(".")
 	line, err := json.Marshal(struct {
 		Time     string               `json:"time"`
 		Commit   string               `json:"commit"`
@@ -246,14 +246,15 @@ func appendResult(path, model string, k int, files map[string]fileScore) error {
 	return f.Close()
 }
 
-// gitState is the current commit and whether the tree has uncommitted
-// changes; outside a git checkout the commit is empty.
-func gitState() (string, bool) {
-	sha, err := exec.Command("git", "rev-parse", "HEAD").Output()
+// gitState is the current commit and whether a tracked file has uncommitted
+// changes (a new cache file is untracked until committed); outside a git
+// checkout the commit is empty.
+func gitState(dir string) (string, bool) {
+	sha, err := exec.Command("git", "-C", dir, "rev-parse", "HEAD").Output()
 	if err != nil {
 		return "", false
 	}
-	status, err := exec.Command("git", "status", "--porcelain").Output()
+	status, err := exec.Command("git", "-C", dir, "status", "--porcelain", "--untracked-files=no").Output()
 	return strings.TrimSpace(string(sha)), err == nil && len(strings.TrimSpace(string(status))) > 0
 }
 
