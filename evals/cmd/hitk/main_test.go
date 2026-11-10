@@ -132,7 +132,7 @@ func TestWritingACacheRefusesPrivateText(t *testing.T) {
 	for name, tc := range map[string]struct {
 		corpus, golden, want string
 	}{
-		"golden file under corpus/private": {publicCorpus(t), public + ":" + private, "corpus/private"},
+		"golden file under corpus/private":   {publicCorpus(t), public + ":" + private, "corpus/private"},
 		"corpus folder under corpus/private": {publicCorpus(t) + ":" + privDir, public, "corpus/private"},
 		"invitee question":                   {publicCorpus(t), invitee, "invitee"},
 		"invitee chunk":                      {"../../testdata/corpus", public, "invitee"},
