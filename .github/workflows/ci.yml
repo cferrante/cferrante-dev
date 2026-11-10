@@ -30,6 +30,8 @@ jobs:
       # Retrieval quality gate (plan step 6.2): hit@5 over the public golden set,
       # from the committed Titan cache; fails below HITK_MIN in the Makefile.
       - run: make hitk-gate
+      # Tests and builds must write only to build/ or temp folders (found in 6.2).
+      - run: scripts/check-clean-tree.sh
 
   doc-links:
     name: Doc links
