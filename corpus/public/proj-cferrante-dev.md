@@ -40,10 +40,10 @@ separate style note may only add to them.
 Answers come from gpt-oss-120b on Groq, chosen for speed on a free tier, with Amazon Nova Lite
 on Bedrock as a fallback when Groq is rate-limited; the thought stream says when the backup
 model is answering. Development runs on local models through Ollama at no cost. Documents are
-embedded with Amazon Titan v2 at 512 dimensions. There is no LLM framework: one small client
-written with Go's standard library talks to every OpenAI-compatible provider behind the
-project's own model interface, which kept hundreds of dependencies out and every request
-under the project's own tests.
+embedded with Amazon Titan v2 at 512 dimensions. There is no LLM framework such as LangChain:
+one small client written with Go's standard library talks to every OpenAI-compatible provider
+behind the project's own model interface, which kept hundreds of dependencies out and every
+request under the project's own tests.
 
 ## Actions and privacy
 
@@ -70,14 +70,14 @@ with the date, the code version and the method used.
 
 ## How it was built
 
-Colleen built the project with Claude Code using spec-driven, test-driven development. A
-design spec defines each component's contract before any code; a step-by-step plan names, for
-every step, the test that must fail first. Each change starts with that failing test, then the
-code is broken on purpose to prove the test catches the fault. Every departure from the plan
-and every code-review finding is logged with its reason. Risky assumptions were settled first
-by small spikes, each answering one question and then torn down; one showed that the planned
-fix for running C++ on Lambda didn't work and that a fully static build did. Each step is its
-own pull request, merged only with CI green.
+Colleen built the project with Claude Code, an AI coding agent, using spec-driven, test-driven
+development. A design spec defines each component's contract before any code; a step-by-step
+plan names, for every step, the test that must fail first. Each change starts with that failing
+test, then the code is broken on purpose to prove the test catches the fault. Every departure
+from the plan and every code-review finding is logged with its reason. Risky assumptions were
+settled first by small spikes, each answering one question and then torn down; one showed that
+the planned fix for running C++ on Lambda didn't work and that a fully static build did. Each
+step is its own pull request, merged only with CI green.
 
 ## Evaluations
 

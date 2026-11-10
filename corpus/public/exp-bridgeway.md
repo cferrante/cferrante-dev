@@ -7,8 +7,8 @@ access: public
 
 At Bridgeway Software, eCounsel customers who bought BusinessObjects reporting universes all
 waited on the one person who could build them. Colleen taught herself to build universes, then
-wrote a tool that automated most of the process, so client services reps could build them and
-the expert handled only advanced setups. Turnaround fell from weeks to days.
+wrote an internal tool that automated most of the process, so client services reps could build
+them and the expert handled only advanced setups. Turnaround fell from weeks to days.
 
 ## After the acquisition
 

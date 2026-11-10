@@ -13,10 +13,10 @@ business runs through it: 142,000+ candidate records, 5,800+ client firms, 22,40
 
 ## Restarting a broken CRM
 
-Colleen inherited the CRM non-functional after six years of stalled development. She shadowed
-users to find the workflows the business couldn't run without, then repaired only those code
-paths, leaving the stack, database and infrastructure unchanged to keep risk low. All partners
-and users were back in daily use of those workflows within one week, without a rewrite.
+Colleen inherited the CRM abandoned and non-functional after six years of stalled development.
+She shadowed users to find the workflows the business couldn't run without, then repaired only
+those code paths, leaving the stack, database and infrastructure unchanged to keep risk low. All
+partners and users were back in daily use of those workflows within one week, without a rewrite.
 
 ## Release cadence
 
@@ -40,8 +40,8 @@ candidate has changed employers.
 Colleen spotted suspicious traffic in the logs and assessed the risk before it became an
 incident: a leak of 142,000+ attorneys' confidential job searches would expose candidates to
 their employers and damage client trust. She layered AWS WAF, an Application Load Balancer and
-isolated security groups so only filtered traffic reaches the application. Over the last 15
-months the WAF blocked about 87,000 requests, 12% of all traffic.
+isolated security groups so only filtered traffic reaches the application, keeping bots and
+attacks out. Over the last 15 months the WAF blocked about 87,000 requests, 12% of all traffic.
 
 ## Microsoft 365 sign-in
 

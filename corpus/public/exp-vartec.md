@@ -14,8 +14,8 @@ to 0%, ending unscheduled reboots and giving operations real-time status.
 
 Executives chose Colleen as the only internal engineer to learn Java quickly and unblock a
 stalled collections-vendor project. She embedded in the call center to reverse-engineer the
-undocumented auto-dialer, then automated it so collections agents were shown the account details
-for each call, taking the agents' pain points as the requirements.
+undocumented legacy auto-dialer, then automated it so collections agents were shown the account
+details for each call, taking the agents' pain points as the requirements.
 
 ## Teradata migration
 
