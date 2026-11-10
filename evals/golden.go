@@ -26,6 +26,7 @@ type Item struct {
 	ExpectedChunks []string `json:"expected_chunks"`
 	ExpectedAnswer string   `json:"expected_answer"`
 	Tags           []string `json:"tags"`
+	File           string   `json:"-"` // the file it was loaded from, for per-file scores
 }
 
 // Load reads JSON Lines files (blank lines allowed). Anything that would
@@ -64,6 +65,7 @@ func Load(paths []string, read func(string) ([]byte, error)) ([]Item, error) {
 			case it.Caller != "anonymous" && it.Caller != "invitee":
 				return nil, fmt.Errorf("%s: %q: caller %q, want anonymous or invitee", at, it.ID, it.Caller)
 			}
+			it.File = path
 			seen[it.ID] = at
 			items = append(items, it)
 		}

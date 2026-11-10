@@ -97,10 +97,24 @@ func run(args []string, getenv cfg.Getenv, out io.Writer) error {
 		}
 	}
 	hits, scored := evals.Score(results)
-	pct := 0
-	if scored > 0 {
-		pct = 100 * hits / scored
-	}
+	pct := percent(hits, scored)
 	fmt.Fprintf(out, "\nhit@%d: %d/%d (%d%%)\n", *k, hits, scored, pct)
+	for _, path := range paths {
+		var mine []evals.Result
+		for _, res := range results {
+			if res.Item.File == path {
+				mine = append(mine, res)
+			}
+		}
+		h, s := evals.Score(mine)
+		fmt.Fprintf(out, "  %s: %d/%d (%d%%)\n", path, h, s, percent(h, s))
+	}
 	return nil
+}
+
+func percent(hits, scored int) int {
+	if scored == 0 {
+		return 0
+	}
+	return 100 * hits / scored
 }
