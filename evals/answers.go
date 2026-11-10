@@ -64,6 +64,9 @@ type AnswerRunner struct {
 	Retrieved *RecordingRetriever // must be the retriever Turn uses
 	Judge     Grader
 	Pause     time.Duration
+	Retries   int
+	RetryWait time.Duration
+	Sleep     func(ctx context.Context, d time.Duration)
 }
 
 // Answer is one question's outcome. Err is set when the turn or the judge
@@ -75,6 +78,7 @@ type Answer struct {
 	Verdict   judge.Result
 	Err       string
 	Elapsed   time.Duration // the turn and the judge together
+	Attempts  int
 }
 
 // Passed: grounded and answering the question as expected. For a decline
@@ -98,24 +102,48 @@ func (r *AnswerRunner) Run(ctx context.Context, items []Item) []Answer {
 	return out
 }
 
+// wait sleeps between attempts; Sleep replaces it in tests.
+func (r *AnswerRunner) wait(ctx context.Context) {
+	if r.Sleep != nil {
+		r.Sleep(ctx, r.RetryWait)
+		return
+	}
+	select {
+	case <-ctx.Done():
+	case <-time.After(r.RetryWait):
+	}
+}
+
+// one answers and judges a question. A failed turn is retried up to Retries
+// times after RetryWait, and so is a failed judgement on its own (without
+// answering again), so a rate limit slows the run instead of failing every
+// later question.
 func (r *AnswerRunner) one(ctx context.Context, it Item) (a Answer) {
 	start := time.Now()
 	a.Item = it
 	defer func() { a.Elapsed = time.Since(start) }()
-	r.Retrieved.take() // drop anything left from an earlier question
-	var buf bytes.Buffer
-	w := sse.New(&buf, nil, clock.Real{})
-	err := r.Turn.Turn(ctx, callerFor(it.Caller), agent.TurnRequest{Message: it.Question}, w)
-	w.Close()
-	text, failure := readStream(buf.Bytes())
-	switch {
-	case err != nil:
-		a.Err = "turn: " + err.Error()
-	case failure != "":
-		a.Err = "turn: " + failure
+	var chunks []agent.Chunk
+	for {
+		a.Attempts++
+		a.Err = ""
+		r.Retrieved.take() // drop anything left from an earlier attempt
+		var buf bytes.Buffer
+		w := sse.New(&buf, nil, clock.Real{})
+		err := r.Turn.Turn(ctx, callerFor(it.Caller), agent.TurnRequest{Message: it.Question}, w)
+		w.Close()
+		text, failure := readStream(buf.Bytes())
+		switch {
+		case err != nil:
+			a.Err = "turn: " + err.Error()
+		case failure != "":
+			a.Err = "turn: " + failure
+		}
+		a.Text, chunks = text, r.Retrieved.take()
+		if a.Err == "" || a.Attempts > r.Retries || ctx.Err() != nil {
+			break
+		}
+		r.wait(ctx)
 	}
-	a.Text = text
-	chunks := r.Retrieved.take()
 	sources := make([]judge.Source, len(chunks))
 	for i, c := range chunks {
 		a.Retrieved = append(a.Retrieved, c.ID)
@@ -124,13 +152,20 @@ func (r *AnswerRunner) one(ctx context.Context, it Item) (a Answer) {
 	if a.Err != "" {
 		return a
 	}
-	v, err := r.Judge.Judge(ctx, judge.Input{Question: it.Question, Answer: text, Sources: sources, Expected: it.ExpectedAnswer})
-	if err != nil {
+	in := judge.Input{Question: it.Question, Answer: a.Text, Sources: sources, Expected: it.ExpectedAnswer}
+	for {
+		v, err := r.Judge.Judge(ctx, in)
+		if err == nil {
+			a.Verdict, a.Err = v, ""
+			return a
+		}
 		a.Err = "judge: " + err.Error()
-		return a
+		if a.Attempts > r.Retries || ctx.Err() != nil {
+			return a
+		}
+		a.Attempts++
+		r.wait(ctx)
 	}
-	a.Verdict = v
-	return a
 }
 
 // readStream joins the answer's tokens and reports an error event's code.
@@ -237,10 +272,11 @@ func WriteAnswers(results, detail string, meta RunMeta, answers []Answer) error 
 			Reasoning         string   `json:"reasoning"`
 			Passed            bool     `json:"passed"`
 			Err               string   `json:"error,omitempty"`
+			Attempts          int      `json:"attempts"`
 			Seconds           float64  `json:"seconds"`
 		}{a.Item.ID, a.Item.File, a.Item.Caller, a.Item.Question, a.Item.ExpectedChunks, a.Item.ExpectedAnswer,
 			a.Text, a.Retrieved, string(a.Verdict.Verdict), a.Verdict.UnsupportedClaims, a.Verdict.AnswersQuestion,
-			a.Verdict.Reasoning, a.Passed(), a.Err, a.Elapsed.Seconds()})
+			a.Verdict.Reasoning, a.Passed(), a.Err, a.Attempts, a.Elapsed.Seconds()})
 		if err != nil {
 			return err
 		}

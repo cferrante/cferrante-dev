@@ -100,6 +100,8 @@ func run(args []string, getenv cfg.Getenv, out io.Writer, d deps) error {
 	results := fs.String("results", "evals/results/answers.jsonl", `append one counts-only line per run; "" = none`)
 	detail := fs.String("detail", "build/evals/answers.jsonl", "every answer's text and verdict (git-ignored)")
 	pause := fs.Duration("pause", env.Duration("ANSWERS_PAUSE", 0), "wait between questions, to stay under a rate limit [ANSWERS_PAUSE]")
+	retries := fs.Int("retries", env.Int("ANSWERS_RETRIES", 3), "retries for a failed turn or judgement [ANSWERS_RETRIES]")
+	retryWait := fs.Duration("retry-wait", env.Duration("ANSWERS_RETRY_WAIT", time.Minute), "wait before a retry; Groq's free tier limits tokens per minute [ANSWERS_RETRY_WAIT]")
 	fs.StringVar(&s.answerModel, "groq-model", env.String("GROQ_MODEL", "openai/gpt-oss-120b"), "answering model on Groq [GROQ_MODEL]")
 	fs.StringVar(&s.judgeModel, "judge-model", env.String("JUDGE_MODEL", "openai/gpt-oss-20b"), "judging model on Groq [JUDGE_MODEL]")
 	fs.StringVar(&s.effort, "effort", env.String("REASONING_EFFORT", ""), "reasoning effort for answers; unset = Groq's default [REASONING_EFFORT]")
@@ -197,7 +199,8 @@ func run(args []string, getenv cfg.Getenv, out io.Writer, d deps) error {
 		len(items), strings.Join(paths, ", "), a.PromptHash(), s.answerModel, s.judgeModel, e.Model())
 
 	start := time.Now()
-	answers := (&evals.AnswerRunner{Turn: a, Retrieved: rec, Judge: judge.Judge{Model: judgeModel}, Pause: *pause}).Run(ctx, items)
+	answers := (&evals.AnswerRunner{Turn: a, Retrieved: rec, Judge: judge.Judge{Model: judgeModel}, Pause: *pause,
+		Retries: *retries, RetryWait: *retryWait}).Run(ctx, items)
 	for _, x := range answers {
 		mark := "✗"
 		if x.Passed() {
@@ -207,7 +210,7 @@ func run(args []string, getenv cfg.Getenv, out io.Writer, d deps) error {
 		case x.Err != "":
 			fmt.Fprintf(out, "! %s  %.1fs  %s\n", x.Item.ID, x.Elapsed.Seconds(), x.Err)
 		default:
-			fmt.Fprintf(out, "%s %s  %.1fs  %s, answers %s%s\n", mark, x.Item.ID, x.Elapsed.Seconds(),
+			fmt.Fprintf(out, "%s %s  %.1fs%s  %s, answers %s%s\n", mark, x.Item.ID, x.Elapsed.Seconds(), tries(x.Attempts),
 				x.Verdict.Verdict, x.Verdict.AnswersQuestion, claims(x.Verdict.UnsupportedClaims))
 		}
 	}
@@ -241,4 +244,11 @@ func keys(m map[string]bool) []string {
 		out = append(out, k)
 	}
 	return out
+}
+
+func tries(n int) string {
+	if n <= 1 {
+		return ""
+	}
+	return fmt.Sprintf(" (%d tries)", n)
 }

@@ -3,10 +3,12 @@ package evals
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cferrante/cferrante-dev/orchestrator/agent"
 	"github.com/cferrante/cferrante-dev/orchestrator/auth"
@@ -179,4 +181,62 @@ func TestAGroundedAnswerThatMissesTheQuestionIsNotAPass(t *testing.T) {
 	if got := run.Run(context.Background(), []Item{weather}); got[0].Passed() {
 		t.Errorf("a grounded answer that misses the question passed: %+v", got[0])
 	}
+}
+
+// flakyTurn fails its first fails calls, as a rate-limited model does.
+type flakyTurn struct {
+	fakeTurn
+	fails, calls int
+}
+
+func (f *flakyTurn) Turn(ctx context.Context, caller auth.Caller, req agent.TurnRequest, w *sse.Writer) error {
+	f.calls++
+	if f.calls <= f.fails {
+		_, _ = f.r.Retrieve(ctx, req.Message, caller.Mask(), 5)
+		return w.Error("model_unavailable", "the model couldn't answer right now", true)
+	}
+	return f.fakeTurn.Turn(ctx, caller, req, w)
+}
+
+// Groq's free tier allows 8,000 tokens a minute, so a full run must wait
+// and retry rather than fail every question after the limit.
+func TestAFailedQuestionIsRetriedAfterAWait(t *testing.T) {
+	rec := &RecordingRetriever{Retriever: fakeRetriever{chunks}}
+	ft := &flakyTurn{fakeTurn: fakeTurn{r: rec, reply: map[string][]string{telecom.Question: {"Yes."}}}, fails: 2}
+	var waits []time.Duration
+	run := &AnswerRunner{Turn: ft, Retrieved: rec, Judge: &fakeJudge{verdicts: map[string]judge.Result{telecom.Question: pass}},
+		Retries: 2, RetryWait: time.Minute, Sleep: func(_ context.Context, d time.Duration) { waits = append(waits, d) }}
+	got := run.Run(context.Background(), []Item{telecom})
+	if !got[0].Passed() || got[0].Attempts != 3 || len(waits) != 2 || waits[0] != time.Minute {
+		t.Errorf("answer %+v after waits %v: want a pass on the third attempt", got[0], waits)
+	}
+
+	ft = &flakyTurn{fakeTurn: fakeTurn{r: rec, reply: map[string][]string{telecom.Question: {"Yes."}}}, fails: 3}
+	run.Turn, waits = ft, nil
+	got = run.Run(context.Background(), []Item{telecom})
+	if got[0].Passed() || got[0].Err == "" || got[0].Attempts != 3 {
+		t.Errorf("answer %+v: want an error after 3 attempts", got[0])
+	}
+}
+
+func TestAJudgeFailureIsRetriedToo(t *testing.T) {
+	j := &flakyJudge{fails: 1, result: pass}
+	run, _ := newRun(map[string][]string{telecom.Question: {"Yes."}}, nil)
+	run.Judge, run.Retries, run.Sleep = j, 1, func(context.Context, time.Duration) {}
+	if got := run.Run(context.Background(), []Item{telecom}); !got[0].Passed() || got[0].Attempts != 2 {
+		t.Errorf("answer %+v: want a pass on the second attempt", got[0])
+	}
+}
+
+type flakyJudge struct {
+	fails, calls int
+	result       judge.Result
+}
+
+func (f *flakyJudge) Judge(context.Context, judge.Input) (judge.Result, error) {
+	f.calls++
+	if f.calls <= f.fails {
+		return judge.Result{}, errors.New("HTTP 429: rate limit")
+	}
+	return f.result, nil
 }

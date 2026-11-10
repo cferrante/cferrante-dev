@@ -34,7 +34,7 @@ func setup(t *testing.T) (golden, results, detail string, args []string) {
 {"id":"g-2","question":"Who keeps the ledger?","caller":"invitee","expected_chunks":["ledger#summary"],"expected_answer":"A private answer."}`), 0o644)
 	results, detail = filepath.Join(dir, "results.jsonl"), filepath.Join(dir, "build", "answers.jsonl")
 	args = []string{"-embedder", "hash", "-corpus", "../../testdata/corpus", "-index", filepath.Join(dir, "e.idx"),
-		"-golden", golden, "-results", results, "-detail", detail, "-owner", "Colleen Ferrante", "-owner-first", "Colleen"}
+		"-golden", golden, "-results", results, "-detail", detail, "-owner", "Colleen Ferrante", "-owner-first", "Colleen", "-retry-wait", "1ms"}
 	return
 }
 
