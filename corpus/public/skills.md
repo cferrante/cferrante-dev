@@ -10,7 +10,7 @@ modernization without rewrites, knowledge transfer and training.
 
 ## Data
 
-Data quality and deduplication, relational schema migration, call-record (CDR) ingestion,
+Data quality and deduplication, relational schema migration, call-record (CDR) conversion,
 Teradata warehouse migration, BusinessObjects universes.
 
 ## Cloud and security

@@ -3,12 +3,13 @@ title: "Senior Programmer, Vartec Telecom (Jan 2001 – Feb 2004)"
 url: /experience/vartec
 access: public
 ---
-## Call-record ingestion
+## Call-record conversion
 
-At Vartec Telecom, Colleen re-architected the system that parsed binary call detail records
-(CDRs) from all 12 telecom switches, consolidating 12 unstable servers onto one machine. She fixed
-memory leaks and replaced polling with file-system listeners and multithreading, cutting idle CPU
-to 0%, ending unscheduled reboots and giving operations real-time status.
+At Vartec Telecom, Colleen re-architected the system that read binary call detail record (CDR)
+files from all 12 telecom switches and converted them to ASCII, replacing per-switch copies with
+one program configured for each switch. She fixed memory leaks and replaced polling with
+file-system listeners and multithreading, cutting idle CPU to 0%, ending unscheduled reboots and
+giving operations real-time status.
 
 ## Auto-dialer
 

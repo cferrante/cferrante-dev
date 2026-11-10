@@ -10,7 +10,7 @@ experience. She owns the systems a business can't run without and makes them tru
 restarted a broken CRM in one week without a rewrite, then ran it for ten years as the firm's
 only engineer. She removes bottlenecks by passing knowledge on through tools, training and
 handovers, so work that depended on one person no longer does. Earlier, in telecom, she built
-call-data ingestion and call-center automation. She automates what's certain and sends the rest
+call-record processing and call-center automation. She automates what's certain and sends the rest
 to a person, from deduplicating 43,800+ candidate records to building an agentic RAG assistant
 with AI coding agents.
 
