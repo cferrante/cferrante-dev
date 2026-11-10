@@ -7,7 +7,7 @@ GO_PKGS := $(shell go list ./... 2>/dev/null)
 SH_FILES := $(shell find . -name '*.sh' -not -path './.git/*')
 SHELLCHECK ?= shellcheck
 
-.PHONY: help tools css site css-check jstest test corpus-check engine-test bench-engine bench-engine-scale bench-go dev smoke-groq smoke-groq-schema measure-groq-cache smoke-bedrock smoke-titan lint fmt docs-check hitk embed-cache hitk-gate smoke-judge answers
+.PHONY: help tools css site css-check jstest test corpus-check engine-test bench-engine bench-engine-scale bench-go dev smoke-groq smoke-groq-schema measure-groq-cache smoke-bedrock smoke-titan lint fmt docs-check hitk embed-cache hitk-gate smoke-judge answers label
 
 ENGINE_BUILD := build/engine
 ENGINE_RELEASE := build/engine-release
@@ -101,6 +101,9 @@ smoke-judge: ## Run the judge on Groq: a known-bad answer must not be grounded (
 
 answers: ## Answer evals: each golden question through the real turn on Groq, judged (needs aws sso login; free tier)
 	go run ./evals/cmd/answers $(ANSWERS_FLAGS)
+
+label: ## Label a sample of answers blind, to check the judge (resumable; LABEL_FLAGS=-report for the agreement)
+	go run ./evals/cmd/label $(LABEL_FLAGS)
 
 lint: tools ## Check formatting, run go vet, shellcheck and deno lint
 	@unformatted=$$(gofmt -l .); \
