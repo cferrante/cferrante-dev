@@ -557,6 +557,26 @@ turn that ends in an error, or a verdict the judge can't give, counts as an erro
 - It never runs in CI (it needs models and the private corpus) and has no threshold until
   6.3c shows the judge can be trusted.
 
+**Judge agreement (step 6.3c).** `make label` (`evals/cmd/label`) checks the judge against you
+before its scores are trusted:
+
+- The first run takes a **sample** from the latest `build/evals/answers.jsonl`: 10 answers the
+  judge passed and 10 it didn't (fewer if a run has fewer), chosen by a fixed seed, so it
+  measures both kinds of mistake. The sample, with each answer and the text of its retrieved
+  chunks, goes to `corpus/private/labels/sample.jsonl` in the private repo: held-out and invitee
+  answers hold private facts, and a later fix to the judge's prompt is re-checked on the same
+  answers.
+- It then shows each answer **blind**: the question, the expected answer, the sources and the
+  answer, never the judge's verdict, since seeing it biases the label. You give a verdict
+  (`g`/`p`/`u`), whether it answers the question (`y`/`p`/`n`) and an optional note; each label
+  is saved as you go to `corpus/private/labels/labels.jsonl`, so labelling can stop and resume.
+- `make label LABEL_FLAGS=-report` compares: verdict agreement, `answers_question` agreement and
+  pass/fail agreement, each as a fraction, with every disagreement listed. **The judge is
+  trusted when verdict and `answers_question` agreement are both at least 80%**; otherwise its
+  prompt is fixed and re-checked on the same sample first.
+- A label file with an unknown value, a duplicate, or an id not in the sample is refused, and
+  the report refuses a sample that isn't fully labelled.
+
 **Adversarial** ([red-team](concepts.md#red-teaming) cases, `evals/adversarial/*.jsonl`):
 
 ```json
