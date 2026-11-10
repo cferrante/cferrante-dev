@@ -539,6 +539,24 @@ without a network call or a secret, and the same vectors on every run.
   to the committed `evals/results/hitk.jsonl`: time, commit (and whether the tree was dirty),
   embedder, k, and hits and scored questions per file. CI passes `-results ""` and writes none.
 
+**Answer evals (step 6.3b).** `make answers` (`evals/cmd/answers`) runs each golden question
+through the real turn (`Agent.Turn`: the same prompt, owner settings, tools and retriever as
+`make dev`) as its caller, on Groq gpt-oss-120b with no fallback, so every answer is the model
+being measured. The [judge](#7-judge) then grades it against the chunks that turn retrieved, in
+the order the turn numbered them, and against `expected_answer`. A question **passes** when the
+verdict is `grounded` and `answers_question` is `yes`; a decline question (no
+`expected_chunks`) passes only if the answer declines, which its `expected_answer` describes. A
+turn that ends in an error, or a verdict the judge can't give, counts as an error, not a pass.
+
+- `evals/results/answers.jsonl` (committed) gets one line per run: time, commit, the answer
+  and judge models, embedder, the prompt hash, and per golden file the count of questions,
+  passes, verdicts, `answers_question` values and errors. **No question or answer text**:
+  invitee and held-out answers hold private facts.
+- `build/evals/answers.jsonl` (git-ignored) holds each answer's text, retrieved chunk ids,
+  verdict, unsupported claims and the judge's reasoning, for reading and for 6.3c's labels.
+- It never runs in CI (it needs models and the private corpus) and has no threshold until
+  6.3c shows the judge can be trusted.
+
 **Adversarial** ([red-team](concepts.md#red-teaming) cases, `evals/adversarial/*.jsonl`):
 
 ```json
