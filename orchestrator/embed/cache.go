@@ -144,6 +144,9 @@ func (r *Recorder) Save(path string) error {
 	if err != nil {
 		return err
 	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
 	tmp, err := os.CreateTemp(filepath.Dir(path), ".cache-*.json")
 	if err != nil {
 		return err
@@ -154,6 +157,9 @@ func (r *Recorder) Save(path string) error {
 		return err
 	}
 	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmp.Name(), 0o644); err != nil {
 		return err
 	}
 	return os.Rename(tmp.Name(), path)

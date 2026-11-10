@@ -13,7 +13,7 @@ import (
 // report the recorded model, so an index built from the cache says Titan.
 func TestRecordedVectorsRoundTripThroughTheCache(t *testing.T) {
 	ctx := context.Background()
-	path := filepath.Join(t.TempDir(), "cache.json")
+	path := filepath.Join(t.TempDir(), "embeddings", "cache.json") // a folder Save must create
 	rec := NewRecorder(Hash{D: 8})
 	texts := []string{"call records from switches", "kiln firings", ""}
 	want, err := rec.Embed(ctx, texts)
@@ -22,6 +22,9 @@ func TestRecordedVectorsRoundTripThroughTheCache(t *testing.T) {
 	}
 	if err := rec.Save(path); err != nil {
 		t.Fatal(err)
+	}
+	if fi, err := os.Stat(path); err != nil || fi.Mode().Perm() != 0o644 {
+		t.Errorf("cache file mode %v (%v), want 0644 like any committed file", fi.Mode().Perm(), err)
 	}
 	c, err := LoadCache(path)
 	if err != nil {
