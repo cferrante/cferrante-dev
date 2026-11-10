@@ -40,7 +40,7 @@ func TestLiveJudge(t *testing.T) {
 	}
 	j := Judge{Model: &oai.Client{Provider: "groq", BaseURL: oai.GroqBaseURL, APIKey: key, Model: envOr("JUDGE_MODEL", "openai/gpt-oss-20b")}}
 
-	vartec := []Source{{ID: "exp-vartec#call-record-conversion", Text: "At Vartec Telecom, Colleen re-architected the system that read binary call detail record (CDR) files from all 12 telecom switches and converted them to ASCII, replacing per-switch copies with one program configured for each switch."}}
+	vartec := []Source{{ID: "exp-vartec#call-record-conversion", Title: "Senior Programmer, Vartec Telecom (Jan 2001 – Feb 2004)", Text: "At Vartec Telecom, Colleen re-architected the system that read binary call detail record (CDR) files from all 12 telecom switches and converted them to ASCII, replacing per-switch copies with one program configured for each switch."}}
 	for _, tc := range []struct {
 		name     string
 		in       Input

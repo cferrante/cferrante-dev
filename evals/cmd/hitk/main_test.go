@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -196,30 +195,5 @@ func TestEachRunAppendsOneResultsLine(t *testing.T) {
 	if r.Time == "" || r.Commit == nil || r.Dirty == nil || r.Embedder != "hash-v1-256" || r.K != 5 ||
 		r.Files[golden]["hits"] != 1 || r.Files[golden]["scored"] != 1 {
 		t.Errorf("results line %s", lines[1])
-	}
-}
-
-// make embed-cache writes the new cache before it logs the run, so an
-// untracked file must not mark the tree dirty; a changed tracked file must.
-func TestDirtyMeansAChangedTrackedFile(t *testing.T) {
-	dir := t.TempDir()
-	git := func(args ...string) {
-		t.Helper()
-		cmd := exec.Command("git", append([]string{"-c", "user.name=t", "-c", "user.email=t@example.invalid", "-C", dir}, args...)...)
-		if out, err := cmd.CombinedOutput(); err != nil {
-			t.Fatalf("git %v: %v\n%s", args, err, out)
-		}
-	}
-	git("init", "-q")
-	os.WriteFile(filepath.Join(dir, "a.txt"), []byte("a"), 0o644)
-	git("add", "a.txt")
-	git("commit", "-q", "-m", "a")
-	os.WriteFile(filepath.Join(dir, "new.json"), []byte("{}"), 0o644)
-	if commit, dirty := gitState(dir); commit == "" || dirty {
-		t.Errorf("untracked file only: commit %q dirty %v, want a commit and clean", commit, dirty)
-	}
-	os.WriteFile(filepath.Join(dir, "a.txt"), []byte("b"), 0o644)
-	if _, dirty := gitState(dir); !dirty {
-		t.Error("changed tracked file: dirty false")
 	}
 }

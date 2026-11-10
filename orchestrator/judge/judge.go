@@ -26,8 +26,9 @@ const (
 	Ungrounded        Verdict = "ungrounded"
 )
 
-// Source is one retrieved chunk, in the order the answer turn numbered it.
-type Source struct{ ID, Text string }
+// Source is one retrieved chunk, in the order the answer turn numbered it,
+// with the document title the answering model also saw.
+type Source struct{ ID, Title, Text string }
 
 // Input is what the judge sees. Expected is the golden set's expected
 // answer; the live judge has none.
@@ -103,7 +104,7 @@ func message(in Input) string {
 	} else {
 		b.WriteString("Sources:\n")
 		for i, s := range in.Sources {
-			fmt.Fprintf(&b, "[%d] %s\n%s\n\n", i+1, s.ID, s.Text)
+			fmt.Fprintf(&b, "[%d] %s: %s\n%s\n\n", i+1, s.ID, s.Title, s.Text)
 		}
 	}
 	fmt.Fprintf(&b, "Answer:\n%s\n\n", in.Answer)

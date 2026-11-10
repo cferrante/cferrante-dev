@@ -31,7 +31,7 @@ func (f *fakeModel) Stream(_ context.Context, req model.Request, onEvent func(mo
 var input = Input{
 	Question: "Has Colleen worked in telecom?",
 	Answer:   "Yes, at Vartec Telecom [1].",
-	Sources:  []Source{{ID: "exp-vartec#call-record-conversion", Text: "At Vartec Telecom, Colleen re-architected…"}},
+	Sources:  []Source{{ID: "exp-vartec#call-record-conversion", Title: "Senior Programmer, Vartec Telecom (Jan 2001 – Feb 2004)", Text: "At Vartec Telecom, Colleen re-architected…"}},
 	Expected: "Yes: Vartec Telecom, 2001–2004.",
 }
 
@@ -92,7 +92,7 @@ func TestTheRequestNumbersSourcesAndAsksForTheSchema(t *testing.T) {
 		t.Errorf("tools %v, schema %s", f.got.Tools, f.got.ResponseSchema)
 	}
 	user := f.got.Messages[len(f.got.Messages)-1].Content
-	for _, want := range []string{"[1] exp-vartec#call-record-conversion", "[2] exp-vartec#auto-dialer", in.Question, in.Answer, in.Expected} {
+	for _, want := range []string{"[1] exp-vartec#call-record-conversion: Senior Programmer, Vartec Telecom (Jan 2001 – Feb 2004)", "[2] exp-vartec#auto-dialer", in.Question, in.Answer, in.Expected} {
 		if !strings.Contains(user, want) {
 			t.Errorf("judge's message lacks %q:\n%s", want, user)
 		}
