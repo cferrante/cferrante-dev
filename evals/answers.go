@@ -228,6 +228,27 @@ func Summarize(answers []Answer) map[string]FileSummary {
 	return out
 }
 
+// DetailRow is one answer in build/evals/answers.jsonl: everything the
+// committed results line leaves out. Step 6.3c samples from it.
+type DetailRow struct {
+	ID                string   `json:"id"`
+	File              string   `json:"file"`
+	Caller            string   `json:"caller"`
+	Question          string   `json:"question"`
+	ExpectedChunks    []string `json:"expected_chunks"`
+	ExpectedAnswer    string   `json:"expected_answer"`
+	Answer            string   `json:"answer"`
+	Retrieved         []string `json:"retrieved"`
+	Verdict           string   `json:"verdict"`
+	UnsupportedClaims []string `json:"unsupported_claims"`
+	AnswersQuestion   string   `json:"answers_question"`
+	Reasoning         string   `json:"reasoning"`
+	Passed            bool     `json:"passed"`
+	Err               string   `json:"error,omitempty"`
+	Attempts          int      `json:"attempts"`
+	Seconds           float64  `json:"seconds"`
+}
+
 // RunMeta identifies what produced a run, so runs compare by commit, models
 // and prompt.
 type RunMeta struct {
@@ -257,24 +278,7 @@ func WriteAnswers(results, detail string, meta RunMeta, answers []Answer) error 
 	}
 	var b bytes.Buffer
 	for _, a := range answers {
-		row, err := json.Marshal(struct {
-			ID                string   `json:"id"`
-			File              string   `json:"file"`
-			Caller            string   `json:"caller"`
-			Question          string   `json:"question"`
-			ExpectedChunks    []string `json:"expected_chunks"`
-			ExpectedAnswer    string   `json:"expected_answer"`
-			Answer            string   `json:"answer"`
-			Retrieved         []string `json:"retrieved"`
-			Verdict           string   `json:"verdict"`
-			UnsupportedClaims []string `json:"unsupported_claims"`
-			AnswersQuestion   string   `json:"answers_question"`
-			Reasoning         string   `json:"reasoning"`
-			Passed            bool     `json:"passed"`
-			Err               string   `json:"error,omitempty"`
-			Attempts          int      `json:"attempts"`
-			Seconds           float64  `json:"seconds"`
-		}{a.Item.ID, a.Item.File, a.Item.Caller, a.Item.Question, a.Item.ExpectedChunks, a.Item.ExpectedAnswer,
+		row, err := json.Marshal(DetailRow{a.Item.ID, a.Item.File, a.Item.Caller, a.Item.Question, a.Item.ExpectedChunks, a.Item.ExpectedAnswer,
 			a.Text, a.Retrieved, string(a.Verdict.Verdict), a.Verdict.UnsupportedClaims, a.Verdict.AnswersQuestion,
 			a.Verdict.Reasoning, a.Passed(), a.Err, a.Attempts, a.Elapsed.Seconds()})
 		if err != nil {
