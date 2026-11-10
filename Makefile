@@ -7,7 +7,7 @@ GO_PKGS := $(shell go list ./... 2>/dev/null)
 SH_FILES := $(shell find . -name '*.sh' -not -path './.git/*')
 SHELLCHECK ?= shellcheck
 
-.PHONY: help tools css site css-check jstest test corpus-check engine-test bench-engine bench-engine-scale bench-go dev smoke-groq smoke-groq-schema measure-groq-cache smoke-bedrock smoke-titan lint fmt docs-check hitk
+.PHONY: help tools css site css-check jstest test corpus-check engine-test bench-engine bench-engine-scale bench-go dev smoke-groq smoke-groq-schema measure-groq-cache smoke-bedrock smoke-titan lint fmt docs-check hitk embed-cache hitk-gate
 
 ENGINE_BUILD := build/engine
 ENGINE_RELEASE := build/engine-release
@@ -42,6 +42,17 @@ endif
 
 hitk: ## Golden set retrieval check: hit@5 per question over CORPUS_DIRS (EMBEDDER from .env)
 	go run ./evals/cmd/hitk $(HITK_FLAGS)
+
+# The gate's threshold: a fraction of the public questions, set from the first
+# Titan run (plan step 6.2). Lowering it needs a row in the plan's deviations log.
+HITK_MIN ?= 0
+EMBED_CACHE_FILE := evals/embeddings/titan-512.json
+
+embed-cache: ## Embed the public corpus and questions with Titan into the committed cache (needs aws sso login; costs about two hundredths of a cent)
+	go run ./evals/cmd/hitk -embedder titan -embed-dim 512 -corpus corpus/public -golden evals/golden/public.jsonl -write-cache $(EMBED_CACHE_FILE)
+
+hitk-gate: ## CI gate: hit@5 over the public set from the cache; fails below HITK_MIN
+	go run ./evals/cmd/hitk -embedder cache -embed-cache $(EMBED_CACHE_FILE) -corpus corpus/public -golden evals/golden/public.jsonl -min $(HITK_MIN) -results ""
 
 corpus-check: ## Fail if a tracked file would publish invitee-only documents
 	go run ./orchestrator/cmd/corpuscheck
