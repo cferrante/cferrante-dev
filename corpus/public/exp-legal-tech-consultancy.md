@@ -1,5 +1,5 @@
 ---
-title: "Staff Software Engineer & Technical Partner, Legal Tech Consultancy (Aug 2016 – present)"
+title: Staff Software Engineer & Technical Partner, Legal Tech Consultancy (Aug 2016 – present)
 url: /experience/legal-tech-consultancy
 access: public
 ---

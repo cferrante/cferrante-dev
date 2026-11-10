@@ -1,5 +1,5 @@
 ---
-title: "Senior Software Engineer / Technical Consultant, Bridgeway Software (Feb 2010 – Jul 2016)"
+title: Senior Software Engineer / Technical Consultant, Bridgeway Software (Feb 2010 – Jul 2016)
 url: /experience/bridgeway
 access: public
 ---

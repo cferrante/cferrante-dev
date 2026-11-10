@@ -1,5 +1,5 @@
 ---
-title: "Senior Software Engineer, Whiteboard Labs (Jul 2005 – Feb 2010)"
+title: Senior Software Engineer, Whiteboard Labs (Jul 2005 – Feb 2010)
 url: /experience/whiteboard-labs
 access: public
 ---
