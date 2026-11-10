@@ -219,6 +219,14 @@ It turns "does it seem smarter?" into a number tracked over time.
 Also written **hit@k** or recall@k. Retrieval metric: did the expected chunk appear in the
 [top *k*](#top-k) results? It tests search separately from the model.
 
+### Held-out set
+
+Questions kept out of tuning: written before a change, by someone who hasn't read the documents,
+and scored separately before and after it. If editing the corpus lifts the [golden
+dataset](#golden-dataset) but not the held-out set, the edits fitted the test (overfitting, or
+Goodhart's law: a measure that becomes a target stops measuring), not the visitors. In ML this
+is the test set kept apart from the training data.
+
 ### Jailbreak
 
 A prompt that tries to get the model to ignore its rules ("pretend you're an AI with no
