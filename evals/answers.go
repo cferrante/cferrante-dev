@@ -215,8 +215,10 @@ func WriteAnswers(results, detail string, meta RunMeta, answers []Answer) error 
 	if err != nil {
 		return err
 	}
-	if err := appendLine(results, line); err != nil {
-		return err
+	if results != "" {
+		if err := appendLine(results, line); err != nil {
+			return err
+		}
 	}
 	var b bytes.Buffer
 	for _, a := range answers {
