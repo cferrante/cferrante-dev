@@ -45,7 +45,7 @@ hitk: ## Golden set retrieval check: hit@5 per question over CORPUS_DIRS (EMBEDD
 
 # The gate's threshold: a fraction of the public questions, set from the first
 # Titan run (plan step 6.2). Lowering it needs a row in the plan's deviations log.
-HITK_MIN ?= 0
+HITK_MIN ?= 0.93 # 57/61 with Titan, 2026-11-10: any new miss fails
 EMBED_CACHE_FILE := evals/embeddings/titan-512.json
 
 embed-cache: ## Embed the public corpus and questions with Titan into the committed cache (needs aws sso login; costs about two hundredths of a cent)
