@@ -134,3 +134,17 @@ func WithDotEnv(path string, get Getenv) (Getenv, error) {
 		return file[k]
 	}, nil
 }
+
+// Float returns the variable as a number such as 0.9, or def when unset.
+func (e *Env) Float(name string, def float64) float64 {
+	v := e.get(name)
+	if v == "" {
+		return def
+	}
+	f, err := strconv.ParseFloat(v, 64)
+	if err != nil {
+		e.fail(fmt.Errorf("%s=%q: want a number such as 0.9", name, v))
+		return def
+	}
+	return f
+}
