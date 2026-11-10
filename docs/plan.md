@@ -191,6 +191,27 @@ verified before you enable access, and the $1 budget alarm stays on.
 
 ## Phase 6 — Evals and safety (M3, $0 locally)
 
+This phase proves with numbers, not impressions, that the assistant gives good answers and is
+safe before anyone outside sees it. Each step tests one layer, in the order a question passes
+through them:
+
+| Steps | Layer | Question it answers |
+|---|---|---|
+| 6.0a–c | Presentation | Does it greet visitors, speak about the owner correctly, and let them stop a slow answer? |
+| 6.1 | Content | Is there true material to answer from, and a way to measure whether search finds it? |
+| 6.2 | Retrieval | Does search keep finding the right section after every change? |
+| 6.3 | Answers | Is the answer grounded, cited, and declined when the documents don't cover it? |
+| 6.4 | Safety | Can a visitor make it leak private documents, reveal its instructions or misuse a tool? |
+
+Each layer depends on the one below: if search misses the right section, no model can answer
+well, so testing [retrieval](concepts.md#hit-at-k) apart from the model tells a search failure
+from a model failure when an answer goes wrong in 6.3 (the same reason unit tests sit under
+end-to-end tests). 6.2 turns `make hitk` from a report into a CI gate, measured with the
+production embedder. 6.3 has a [judge](concepts.md#llm-as-judge) grade real answers, checked
+first against answers you label yourself. 6.4 attacks the assistant, with
+[canary strings](concepts.md#canary-string) making a leak a plain text match rather than a
+judgement call.
+
 | Step | Test that must fail first | Done when |
 |---|---|---|
 | **6.0a** Welcome message: a static `welcome` key in `MESSAGES_FILE` with `{assistant}`, `{owner}` and `{owner_first}`, shown on an empty conversation; `OWNER_NAME` (full) and `OWNER_FIRST_NAME` settings, read by `make site` (`make dev` from 6.0b) | An unknown placeholder in `welcome` stops startup and the build; the page shows the configured text on load ~~and keeps it after the first question~~ (replaced by the first answer, see the deviations log); ~~the welcome is never in the history sent to the model~~ (true by construction, see the deviations log); Go and JS defaults differ → test fails | A `MESSAGES_FILE` welcome shows on load with your names filled in; your click-through **✅ 2026-11-03** (built; your click-through next) |
