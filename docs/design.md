@@ -510,6 +510,26 @@ answer. `make hitk` (`evals/cmd/hitk`) indexes `CORPUS_DIRS`, searches each ques
 caller's access mask and prints ✓/✗ per question and hit@5. An expected chunk the index lacks,
 or one the caller may not see, stops the run: it's a typo or a broken question, not a miss.
 
+**The hit@k gate (step 6.2).** CI has no Ollama, no AWS credentials and no private repo, so it
+scores `evals/golden/public.jsonl` over `corpus/public/` from a committed **embedding cache**,
+`evals/embeddings/titan-512.json`: `{"model": …, "dim": 512, "vectors": {"<SHA-256 of the
+text>": "<base64 of little-endian float32s>"}}`. That is the production embedder ([D1](#d1-embedding-model))
+without a network call or a secret, and the same vectors on every run.
+
+- `make embed-cache` (after `aws sso login`) runs `hitk` with Titan and `-write-cache`, saving
+  every vector the run asked for: chunks and questions alike. It refuses an invitee chunk, an
+  invitee question, or a folder or file under `corpus/private`, because a vector of private
+  text can be partly turned back into the text.
+- `-embedder cache` answers only from the file and reports the cached model's name, so the index
+  records Titan. A text the file lacks stops the run, naming its start and "run make
+  embed-cache": an edited document is never scored against stale vectors. A vector whose length
+  isn't `dim` is refused when the file loads.
+- `make hitk-gate` (CI) fails when hit@5 over the scored questions is below `HITK_MIN`, a
+  fraction set from the first Titan run. Lowering it needs a row in the plan's deviations log.
+- `make hitk` still scores the held-out and invitee sets locally, and appends one line per run
+  to the committed `evals/results/hitk.jsonl`: time, commit (and whether the tree was dirty),
+  embedder, k, and hits and scored questions per file. CI passes `-results ""` and writes none.
+
 **Adversarial** ([red-team](concepts.md#red-teaming) cases, `evals/adversarial/*.jsonl`):
 
 ```json
@@ -701,7 +721,7 @@ Plan Phase 4 builds it.
   `{assistant}`, is at most 2,000 characters, and holds no facts about the owner (those go in
   the corpus, where the judge can see them). Names and pronouns are one line of at most 40
   characters without braces. Any violation stops startup. The server logs
-  `prompt sha256=<12 hex digits>` of the full system prompt, which 6.2 stores with each eval
+  `prompt sha256=<12 hex digits>` of the full system prompt, which 6.3 stores with each answer eval
   run, since a style file changes behaviour without changing code.
 - **Welcome (step 6.0a):** the answer area shows the `welcome` wording until the first
   question or confirmation, then the answer replaces it like any other (the page shows one turn
