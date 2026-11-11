@@ -21,7 +21,8 @@ type Label struct {
 	Note            string `json:"note,omitempty"`
 }
 
-// Passed is the same rule the runner applies to the judge's verdict.
+// Passed is the rule the runner applies to the judge's verdict; Agree adds
+// the citation check, which is code, to both sides.
 func (l Label) Passed() bool { return l.Verdict == "grounded" && l.AnswersQuestion == "yes" }
 
 // Sample picks up to perSide answers the judge passed and up to perSide it
@@ -134,7 +135,9 @@ func Agree(sample []DetailRow, labels []Label) (Agreement, error) {
 		if sameAnswers {
 			a.Answers++
 		}
-		if r.Passed == l.Passed() {
+		// The citation rule is code, not judgement: apply it to your label too.
+		ans := Answer{Item: Item{ExpectedChunks: r.ExpectedChunks}, Text: r.Answer}
+		if r.Passed == (l.Passed() && (ans.Cited() || ans.declines())) {
 			a.PassFail++
 		}
 		if !sameVerdict || !sameAnswers {
