@@ -57,6 +57,10 @@ Development is on Ubuntu 26.04 under WSL2, with no Docker.
 - AWS CLI 2.37.5 can't read `file://` from a pipe (`/dev/stdin`, `<(...)`): use a real file.
 - `gh` is old: `gh pr edit` fails (use `gh api -X PATCH`); `gh pr checks` has no `--json`.
 - `make lint` runs gofmt, go vet and shellcheck on every `*.sh`; `make test` runs Go and shell tests.
+- Groq's free tier allows 8,000 tokens a minute per model (measured 2026-11-10): a loop of live
+  calls hits it within a few requests. Anything that calls a provider repeatedly must pace or
+  retry (`make answers` waits a minute and retries up to 3 times) and count a failure as an error,
+  never a pass.
 
 ## Parallel sessions
 
