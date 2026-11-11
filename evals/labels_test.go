@@ -116,3 +116,24 @@ func TestAgreementRefusesAnUnlabelledSample(t *testing.T) {
 		t.Errorf("err = %v, want one naming the unlabelled b", err)
 	}
 }
+
+// The citation rule is checked in code, the same for the judge and for you:
+// an answer the judge failed only for lacking a citation agrees with your
+// "grounded, yes" on pass or fail, since you would fail it for that too.
+func TestPassOrFailAppliesTheCitationRuleToBothSides(t *testing.T) {
+	sample := []DetailRow{
+		{ID: "uncited", ExpectedChunks: []string{"x#y"}, Answer: "Relay does 【1】.", Verdict: "grounded", AnswersQuestion: "yes", Passed: false},
+		{ID: "cited", ExpectedChunks: []string{"x#y"}, Answer: "Relay does [1].", Verdict: "grounded", AnswersQuestion: "yes", Passed: true},
+	}
+	labels := []Label{
+		{ID: "uncited", Verdict: "grounded", AnswersQuestion: "yes"},
+		{ID: "cited", Verdict: "grounded", AnswersQuestion: "yes"},
+	}
+	a, err := Agree(sample, labels)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.PassFail != 2 {
+		t.Errorf("pass or fail agreed on %d of 2, want 2: the citation rule must apply to the label too", a.PassFail)
+	}
+}
