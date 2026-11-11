@@ -176,6 +176,10 @@ that falls back fails rather than returning free text.
 **Matching model output.** gpt-oss writes Unicode hyphens (U+2011) where its source has `-`
 (20 of 20 answers in spike 1.5). Any exact comparison against model output, such as canary
 strings ([§10](#10-eval-file-formats)) or citations, normalises dashes first.
+The turn also normalises what visitors see, as it streams (found in 6.3b's runs): `【n】` becomes `[n]`
+(10 of 75 answers cited that way, and the citation parser missed them), U+202F becomes a comma
+between digits ("2 000" → "2,000", 63 of 75 answers) and a space elsewhere, and U+2011 becomes `-`.
+The page, the citation parser and the stored conversation all get the normalised text.
 
 **[Router with fallback](concepts.md#model-router-and-fallback).** `model.Router` wraps a primary
 and a fallback. It falls back **only if the primary fails before the first
