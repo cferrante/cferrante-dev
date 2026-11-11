@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -81,10 +82,22 @@ type Answer struct {
 	Attempts  int
 }
 
-// Passed: grounded and answering the question as expected. For a decline
-// question the expected answer is the decline.
+// citation matches a marker the turn turns into a source link: [n], [n, m].
+var citation = regexp.MustCompile(`\[\d{1,3}(?:\s*,\s*\d{1,3})*\]`)
+
+// Cited: the answer links at least one source. Checked in code, not by the
+// judge, since it can be counted (plan 6.3c).
+func (a Answer) Cited() bool { return citation.MatchString(a.Text) }
+
+// declines: a question with no expected chunk, whose answer should decline
+// and has nothing to cite.
+func (a Answer) declines() bool { return len(a.Item.ExpectedChunks) == 0 }
+
+// Passed: grounded, answering the question as expected, and citing a source
+// unless it declines. For a decline question the expected answer is the decline.
 func (a Answer) Passed() bool {
-	return a.Err == "" && a.Verdict.Verdict == judge.Grounded && a.Verdict.AnswersQuestion == "yes"
+	return a.Err == "" && a.Verdict.Verdict == judge.Grounded && a.Verdict.AnswersQuestion == "yes" &&
+		(a.Cited() || a.declines())
 }
 
 // Run answers every item in order.
@@ -200,6 +213,7 @@ type FileSummary struct {
 	Questions int            `json:"questions"`
 	Passed    int            `json:"passed"`
 	Errors    int            `json:"errors"`
+	Uncited   int            `json:"uncited"`
 	Verdicts  map[string]int `json:"verdicts"`
 	Answers   map[string]int `json:"answers_question"`
 }
@@ -219,6 +233,9 @@ func Summarize(answers []Answer) map[string]FileSummary {
 		default:
 			s.Verdicts[string(a.Verdict.Verdict)]++
 			s.Answers[a.Verdict.AnswersQuestion]++
+			if !a.Cited() && !a.declines() {
+				s.Uncited++
+			}
 			if a.Passed() {
 				s.Passed++
 			}
