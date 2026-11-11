@@ -2,13 +2,17 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cferrante/cferrante-dev/evals"
+	"github.com/cferrante/cferrante-dev/orchestrator/judge"
 )
 
 // detailFile writes a run's detail with two judged answers over the fixture
@@ -117,3 +121,78 @@ func TestTheSampleIsTakenOnce(t *testing.T) {
 		t.Error("the sample changed")
 	}
 }
+
+// fakeGrader returns the given verdict for every answer and counts calls;
+// the first fails calls fail, as a rate-limited judge does.
+type fakeGrader struct {
+	verdicts     map[string]judge.Result // by answer text
+	fails, calls int
+}
+
+func (f *fakeGrader) Judge(_ context.Context, in judge.Input) (judge.Result, error) {
+	f.calls++
+	if f.calls <= f.fails {
+		return judge.Result{}, errors.New("HTTP 429")
+	}
+	return f.verdicts[in.Answer], nil
+}
+
+func withGrader(g evals.Grader) deps {
+	return deps{
+		newGrader: func(context.Context) (evals.Grader, error) { return g, nil },
+		sleep:     func(context.Context, time.Duration) {},
+	}
+}
+
+// -rejudge grades the sampled answers again with today's judge and compares
+// those verdicts with the labels, leaving the sample as it was.
+func TestRejudgeComparesTheNewVerdictsWithTheLabels(t *testing.T) {
+	dir := t.TempDir()
+	detail := detailFile(t, dir)
+	// Label both answers grounded and answering, though the judge failed g-2.
+	if err := run(args(dir, detail), strings.NewReader("g\ny\n\ng\ny\n\n"), &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := os.ReadFile(filepath.Join(dir, "labels", "sample.jsonl"))
+	g := &fakeGrader{fails: 1, verdicts: map[string]judge.Result{
+		"Relay does [1].":       {Verdict: judge.Grounded, AnswersQuestion: "yes"},
+		"Kiln bakes bread [1].": {Verdict: judge.Grounded, AnswersQuestion: "no"},
+	}}
+	var out bytes.Buffer
+	if err := runDeps(args(dir, detail, "-report", "-rejudge"), noEnv, strings.NewReader(""), &out, withGrader(g)); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"re-judged 2 answers", "verdict: 2/2 (100%)", "answers_question: 1/2 (50%)", "pass or fail: 1/2 (50%)"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("report lacks %q:\n%s", want, out.String())
+		}
+	}
+	if g.calls != 3 {
+		t.Errorf("%d judge calls, want 3 (one retried)", g.calls)
+	}
+	if after, _ := os.ReadFile(filepath.Join(dir, "labels", "sample.jsonl")); !bytes.Equal(before, after) {
+		t.Error("re-judging changed the stored sample")
+	}
+}
+
+// The fresh sample confirms the fix on answers whose labels didn't shape
+// it: none of its questions may have been sampled before.
+func TestAFreshSampleLeavesOutQuestionsAlreadySampled(t *testing.T) {
+	dir := t.TempDir()
+	detail := detailFile(t, dir)
+	if err := run(args(dir, detail, "-per-side", "0"), strings.NewReader("q\n"), &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(filepath.Join(dir, "labels", "sample.jsonl"), []byte(`{"id":"g-1","answer":"Relay does [1].","verdict":"grounded","answers_question":"yes","passed":true}`+"\n"), 0o644)
+	if err := run(args(dir, detail, "-name", "fresh"), strings.NewReader("q\n"), &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, "labels", "fresh-sample.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(raw, []byte(`"id":"g-1"`)) || !bytes.Contains(raw, []byte(`"id":"g-2"`)) {
+		t.Errorf("fresh sample:\n%s", raw)
+	}
+}
+func noEnv(string) string { return "" }

@@ -11,6 +11,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -20,10 +21,17 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
+
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/ssm"
 
 	"github.com/cferrante/cferrante-dev/evals"
 	cfg "github.com/cferrante/cferrante-dev/orchestrator/config"
 	"github.com/cferrante/cferrante-dev/orchestrator/corpus"
+	"github.com/cferrante/cferrante-dev/orchestrator/judge"
+	"github.com/cferrante/cferrante-dev/orchestrator/model/oai"
+	"github.com/cferrante/cferrante-dev/orchestrator/secrets"
 )
 
 // sampled is one answer as stored in the sample: the run's row plus the
@@ -39,21 +47,54 @@ type source struct {
 	Text  string `json:"text"`
 }
 
+// deps are what -rejudge needs from outside: the judge on Groq in main,
+// fakes in tests.
+type deps struct {
+	newGrader func(ctx context.Context) (evals.Grader, error)
+	sleep     func(ctx context.Context, d time.Duration)
+}
+
 func main() {
 	getenv, err := cfg.WithDotEnv(".env", os.Getenv)
 	if err == nil {
-		err = runEnv(os.Args[1:], getenv, os.Stdin, os.Stdout)
+		env := cfg.New(getenv)
+		s := groqSettings{model: env.String("JUDGE_MODEL", "openai/gpt-oss-20b"),
+			keyParam: env.String("GROQ_KEY_PARAM", "/cferrante-dev/groq-api-key"),
+			profile:  env.String("AWS_PROFILE", "cferrante-dev-admin"), region: env.String("AWS_REGION", "us-east-1")}
+		err = runDeps(os.Args[1:], getenv, os.Stdin, os.Stdout, deps{newGrader: s.grader, sleep: sleep})
 	}
 	if err != nil {
 		log.Fatalf("label: %v", err)
 	}
 }
 
-func run(args []string, in io.Reader, out io.Writer) error {
-	return runEnv(args, func(string) string { return "" }, in, out)
+type groqSettings struct{ model, keyParam, profile, region string }
+
+// grader reads the Groq key from SSM and returns the judge on Groq.
+func (s groqSettings) grader(ctx context.Context) (evals.Grader, error) {
+	c, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithSharedConfigProfile(s.profile), awsconfig.WithRegion(s.region))
+	if err != nil {
+		return nil, err
+	}
+	key, err := (&secrets.SSM{API: ssm.NewFromConfig(c)}).Get(ctx, s.keyParam)
+	if err != nil {
+		return nil, fmt.Errorf("%w (if your AWS session has expired: aws sso login --profile %s)", err, s.profile)
+	}
+	return judge.Judge{Model: &oai.Client{Provider: "groq", BaseURL: oai.GroqBaseURL, APIKey: key, Model: s.model}}, nil
 }
 
-func runEnv(args []string, getenv cfg.Getenv, in io.Reader, out io.Writer) error {
+func sleep(ctx context.Context, d time.Duration) {
+	select {
+	case <-ctx.Done():
+	case <-time.After(d):
+	}
+}
+
+func run(args []string, in io.Reader, out io.Writer) error {
+	return runDeps(args, func(string) string { return "" }, in, out, deps{})
+}
+
+func runDeps(args []string, getenv cfg.Getenv, in io.Reader, out io.Writer, d deps) error {
 	env := cfg.New(getenv)
 	fs := flag.NewFlagSet("label", flag.ContinueOnError)
 	detail := fs.String("detail", "build/evals/answers.jsonl", "the answer-eval run to sample from (make answers writes it)")
@@ -61,20 +102,26 @@ func runEnv(args []string, getenv cfg.Getenv, in io.Reader, out io.Writer) error
 	corpusDirs := fs.String("corpus", env.String("CORPUS_DIRS", "corpus/public:corpus/private"), "corpus folders, for the chunks' text [CORPUS_DIRS]")
 	perSide := fs.Int("per-side", 10, "answers the judge passed, and answers it didn't, to sample")
 	report := fs.Bool("report", false, "compare your labels with the judge's verdicts")
+	rejudge := fs.Bool("rejudge", false, "with -report: grade the sampled answers again with today's judge first (needs aws sso login)")
+	name := fs.String("name", "", "a further sample alongside the first, such as fresh: <name>-sample.jsonl and <name>-labels.jsonl")
 	if err := env.Err(); err != nil {
 		return err
 	}
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	samplePath, labelsPath := filepath.Join(*dir, "sample.jsonl"), filepath.Join(*dir, "labels.jsonl")
+	prefix := ""
+	if *name != "" {
+		prefix = *name + "-"
+	}
+	samplePath, labelsPath := filepath.Join(*dir, prefix+"sample.jsonl"), filepath.Join(*dir, prefix+"labels.jsonl")
 
 	sample, err := loadSample(samplePath)
 	if errors.Is(err, os.ErrNotExist) {
 		if *report {
 			return fmt.Errorf("no sample yet: run make label first")
 		}
-		if sample, err = takeSample(*detail, *corpusDirs, *perSide); err != nil {
+		if sample, err = takeSample(*detail, *corpusDirs, *perSide, sampledBefore(*dir)); err != nil {
 			return err
 		}
 		if err := writeSample(samplePath, sample); err != nil {
@@ -98,6 +145,11 @@ func runEnv(args []string, getenv cfg.Getenv, in io.Reader, out io.Writer) error
 		return fmt.Errorf("%s: %w", labelsPath, err)
 	}
 	if *report {
+		if *rejudge {
+			if rows, err = rejudgeAll(context.Background(), out, sample, d); err != nil {
+				return err
+			}
+		}
 		return printReport(out, rows, labels)
 	}
 	return label(in, out, sample, labels, labelsPath)
@@ -119,7 +171,24 @@ func loadSample(path string) ([]sampled, error) {
 	return out, nil
 }
 
-func takeSample(detailPath, corpusDirs string, perSide int) ([]sampled, error) {
+// sampledBefore is every question id in the samples already in dir: a
+// fresh sample must not repeat them.
+func sampledBefore(dir string) map[string]bool {
+	ids := map[string]bool{}
+	paths, _ := filepath.Glob(filepath.Join(dir, "*sample.jsonl"))
+	for _, p := range paths {
+		s, err := loadSample(p)
+		if err != nil {
+			continue
+		}
+		for _, x := range s {
+			ids[x.ID] = true
+		}
+	}
+	return ids
+}
+
+func takeSample(detailPath, corpusDirs string, perSide int, exclude map[string]bool) ([]sampled, error) {
 	raw, err := os.ReadFile(detailPath)
 	if err != nil {
 		return nil, fmt.Errorf("%w (run make answers first)", err)
@@ -130,7 +199,9 @@ func takeSample(detailPath, corpusDirs string, perSide int) ([]sampled, error) {
 		if err := json.Unmarshal([]byte(line), &r); err != nil {
 			return nil, fmt.Errorf("%s: %w", detailPath, err)
 		}
-		rows = append(rows, r)
+		if !exclude[r.ID] {
+			rows = append(rows, r)
+		}
 	}
 	chunks, err := corpus.Chunker{Target: 1000}.ReadDirs(corpus.SplitDirs(corpusDirs))
 	if err != nil {
@@ -269,4 +340,41 @@ func printReport(out io.Writer, rows []evals.DetailRow, labels []evals.Label) er
 		fmt.Fprintln(out, "\nThe judge is not trusted yet: below 80% on the verdict or answers_question. Fix its prompt and re-check on this sample.")
 	}
 	return nil
+}
+
+// rejudgeAll grades every sampled answer again with today's judge,
+// retrying after a minute when the judge fails (Groq's free tier allows
+// 8,000 tokens a minute), and returns rows carrying the new verdicts. The
+// stored sample is left as it was.
+func rejudgeAll(ctx context.Context, out io.Writer, sample []sampled, d deps) ([]evals.DetailRow, error) {
+	if d.newGrader == nil {
+		return nil, errors.New("-rejudge: no judge")
+	}
+	g, err := d.newGrader(ctx)
+	if err != nil {
+		return nil, err
+	}
+	rows := make([]evals.DetailRow, len(sample))
+	for i, s := range sample {
+		in := judge.Input{Question: s.Question, Answer: s.Answer, Expected: s.ExpectedAnswer}
+		for _, src := range s.Sources {
+			in.Sources = append(in.Sources, judge.Source{ID: src.ID, Title: src.Title, Text: src.Text})
+		}
+		var v judge.Result
+		for attempt := 1; ; attempt++ {
+			if v, err = g.Judge(ctx, in); err == nil {
+				break
+			}
+			if attempt > 3 {
+				return nil, fmt.Errorf("re-judging %s: %w", s.ID, err)
+			}
+			d.sleep(ctx, time.Minute)
+		}
+		r := s.DetailRow
+		r.Verdict, r.AnswersQuestion, r.Reasoning, r.UnsupportedClaims = string(v.Verdict), v.AnswersQuestion, v.Reasoning, v.UnsupportedClaims
+		r.Passed = evals.Answer{Item: evals.Item{ExpectedChunks: s.ExpectedChunks}, Text: s.Answer, Verdict: v}.Passed()
+		rows[i] = r
+	}
+	fmt.Fprintf(out, "re-judged %d answers with today's judge\n\n", len(rows))
+	return rows, nil
 }
