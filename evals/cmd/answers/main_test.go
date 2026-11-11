@@ -44,7 +44,7 @@ func TestARunAnswersJudgesAndWritesBothFiles(t *testing.T) {
 	if err := run(args, func(string) string { return "" }, &out, fakes("Relay parses them [1].", grounded)); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"2 questions from", "prompt sha256=", "✓ g-1", "✓ g-2", "2/2 passed"} {
+	for _, want := range []string{"2 questions from", "prompt sha256=", "✓ g-1", "✓ g-2", "2/2 passed", "0 uncited"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("output lacks %q:\n%s", want, out.String())
 		}

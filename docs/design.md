@@ -408,10 +408,17 @@ finishes and reported via the `judge` event. Input: the answer and the retrieved
 
 - **[Grounded](concepts.md#groundedness)** means every factual claim is supported by a retrieved chunk. Small talk and
   questions back to the visitor are not claims, so a polite decline is grounded.
+- Restating or interpreting the visitor's own problem ("It sounds like the slowdown is…") is not a
+  claim about the owner, and a fair summary of what several sources say together is supported.
+  A claim that goes beyond its source (a larger scope, a number, title or responsibility the
+  source doesn't state) is unsupported.
 - `unsupported_claims` is empty exactly when the verdict is `grounded`; anything else is refused
   as an inconsistent verdict, as is a value outside the lists above.
 - `answers_question` compares the answer with an expected answer when one is given (the golden
   set's `expected_answer`, step 6.3); without one (the live judge) it must be `not_applicable`.
+  `yes` means it gives the expected answer's main point: details listed there are examples, not
+  a checklist. When the expected answer names steps ("reflects the problem, then relates it
+  to…"), each step must be there.
 - The judge (`orchestrator/judge`) sees the sources numbered as the answer turn numbered them, so
   a citation `[2]` means the same chunk to both. It uses Groq's strict structured output (step
   5.4) on `JUDGE_MODEL` (default `openai/gpt-oss-20b`), a smaller model than the one it grades.
@@ -548,8 +555,10 @@ through the real turn (`Agent.Turn`: the same prompt, owner settings, tools and 
 `make dev`) as its caller, on Groq gpt-oss-120b with no fallback, so every answer is the model
 being measured. The [judge](#7-judge) then grades it against the chunks that turn retrieved, in
 the order the turn numbered them, and against `expected_answer`. A question **passes** when the
-verdict is `grounded` and `answers_question` is `yes`; a decline question (no
-`expected_chunks`) passes only if the answer declines, which its `expected_answer` describes. A
+verdict is `grounded`, `answers_question` is `yes`, and, unless it is a decline question (no
+`expected_chunks`), the answer cites at least one source as `[n]`: checked in code, not by the
+judge. A decline question passes only if the answer declines, which its `expected_answer`
+describes. A
 turn that ends in an error, or a verdict the judge can't give, counts as an error, not a pass.
 
 - `evals/results/answers.jsonl` (committed) gets one line per run: time, commit, the answer
@@ -577,7 +586,10 @@ before its scores are trusted:
 - `make label LABEL_FLAGS=-report` compares: verdict agreement, `answers_question` agreement and
   pass/fail agreement, each as a fraction, with every disagreement listed. **The judge is
   trusted when verdict and `answers_question` agreement are both at least 80%**; otherwise its
-  prompt is fixed and re-checked on the same sample first.
+  prompt is fixed, re-judged on the same sample (`-rejudge`, a diagnostic: those labels shaped
+  the fix) and then checked on a **fresh** sample (`-name fresh`: 5 + 5 answers from a new run,
+  none of them questions already sampled), labelled blind. The 80% bar applies to the fresh
+  sample.
 - A label file with an unknown value, a duplicate, or an id not in the sample is refused, and
   the report refuses a sample that isn't fully labelled.
 

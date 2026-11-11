@@ -112,3 +112,21 @@ func TestWithoutAnExpectedAnswerTheMessageSaysSo(t *testing.T) {
 		t.Errorf("message:\n%s", user)
 	}
 }
+
+// The rules from the owner's labels (plan 6.3c): interpretation of the
+// visitor's problem isn't a claim, listed details are examples, named steps
+// are required, and a claim beyond its source is unsupported.
+func TestThePromptCarriesTheLabelledRules(t *testing.T) {
+	for _, want := range []string{
+		"Restating or interpreting the visitor's own problem",
+		"fair summary of what several sources say together",
+		"goes beyond its source",
+		"main point",
+		"examples, not a checklist",
+		"each step must be there",
+	} {
+		if !strings.Contains(system, want) {
+			t.Errorf("system prompt lacks %q", want)
+		}
+	}
+}

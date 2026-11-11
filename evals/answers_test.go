@@ -124,7 +124,7 @@ func TestFailuresAreErrorsNotPasses(t *testing.T) {
 	}
 
 	j = &fakeJudge{err: judge.ErrBadVerdict}
-	run, _ = newRun(map[string][]string{telecom.Question: {"Yes."}}, j)
+	run, _ = newRun(map[string][]string{telecom.Question: {"Yes [1]."}}, j)
 	got = run.Run(context.Background(), []Item{telecom})
 	if got[0].Passed() || !strings.Contains(got[0].Err, "bad verdict") {
 		t.Errorf("failed judge: %+v", got[0])
@@ -136,7 +136,7 @@ func TestFailuresAreErrorsNotPasses(t *testing.T) {
 
 func TestSummariesArePerFile(t *testing.T) {
 	j := &fakeJudge{verdicts: map[string]judge.Result{telecom.Question: pass, secret.Question: {Verdict: judge.PartiallyGrounded, UnsupportedClaims: []string{"x"}, AnswersQuestion: "partly"}}}
-	run, _ := newRun(map[string][]string{telecom.Question: {"Yes."}, secret.Question: {"Maybe."}}, j)
+	run, _ := newRun(map[string][]string{telecom.Question: {"Yes [1]."}, secret.Question: {"Maybe."}}, j)
 	s := Summarize(run.Run(context.Background(), []Item{telecom, secret}))
 	if s["public.jsonl"].Passed != 1 || s["heldout.jsonl"].Passed != 0 || s["heldout.jsonl"].Verdicts["partially_grounded"] != 1 {
 		t.Errorf("summaries %+v", s)
@@ -202,7 +202,7 @@ func (f *flakyTurn) Turn(ctx context.Context, caller auth.Caller, req agent.Turn
 // and retry rather than fail every question after the limit.
 func TestAFailedQuestionIsRetriedAfterAWait(t *testing.T) {
 	rec := &RecordingRetriever{Retriever: fakeRetriever{chunks}}
-	ft := &flakyTurn{fakeTurn: fakeTurn{r: rec, reply: map[string][]string{telecom.Question: {"Yes."}}}, fails: 2}
+	ft := &flakyTurn{fakeTurn: fakeTurn{r: rec, reply: map[string][]string{telecom.Question: {"Yes [1]."}}}, fails: 2}
 	var waits []time.Duration
 	run := &AnswerRunner{Turn: ft, Retrieved: rec, Judge: &fakeJudge{verdicts: map[string]judge.Result{telecom.Question: pass}},
 		Retries: 2, RetryWait: time.Minute, Sleep: func(_ context.Context, d time.Duration) { waits = append(waits, d) }}
@@ -211,7 +211,7 @@ func TestAFailedQuestionIsRetriedAfterAWait(t *testing.T) {
 		t.Errorf("answer %+v after waits %v: want a pass on the third attempt", got[0], waits)
 	}
 
-	ft = &flakyTurn{fakeTurn: fakeTurn{r: rec, reply: map[string][]string{telecom.Question: {"Yes."}}}, fails: 3}
+	ft = &flakyTurn{fakeTurn: fakeTurn{r: rec, reply: map[string][]string{telecom.Question: {"Yes [1]."}}}, fails: 3}
 	run.Turn, waits = ft, nil
 	got = run.Run(context.Background(), []Item{telecom})
 	if got[0].Passed() || got[0].Err == "" || got[0].Attempts != 3 {
@@ -221,7 +221,7 @@ func TestAFailedQuestionIsRetriedAfterAWait(t *testing.T) {
 
 func TestAJudgeFailureIsRetriedToo(t *testing.T) {
 	j := &flakyJudge{fails: 1, result: pass}
-	run, _ := newRun(map[string][]string{telecom.Question: {"Yes."}}, nil)
+	run, _ := newRun(map[string][]string{telecom.Question: {"Yes [1]."}}, nil)
 	run.Judge, run.Retries, run.Sleep = j, 1, func(context.Context, time.Duration) {}
 	if got := run.Run(context.Background(), []Item{telecom}); !got[0].Passed() || got[0].Attempts != 2 {
 		t.Errorf("answer %+v: want a pass on the second attempt", got[0])
@@ -239,4 +239,25 @@ func (f *flakyJudge) Judge(context.Context, judge.Input) (judge.Result, error) {
 		return judge.Result{}, errors.New("HTTP 429: rate limit")
 	}
 	return f.result, nil
+}
+
+// An uncited answer doesn't pass (plan 6.3c), except a decline, which has
+// nothing to cite.
+func TestAnUncitedAnswerDoesNotPassUnlessItDeclines(t *testing.T) {
+	j := &fakeJudge{verdicts: map[string]judge.Result{telecom.Question: pass, weather.Question: pass}}
+	run, _ := newRun(map[string][]string{telecom.Question: {"Yes, at Vartec."}, weather.Question: {"I can't answer that."}}, j)
+	got := run.Run(context.Background(), []Item{telecom, weather})
+	if got[0].Passed() || got[0].Cited() {
+		t.Errorf("uncited answer passed: %+v", got[0])
+	}
+	if !got[1].Passed() {
+		t.Errorf("a decline without citations failed: %+v", got[1])
+	}
+	if s := Summarize(got)["public.jsonl"]; s.Uncited != 1 {
+		t.Errorf("summary %+v, want 1 uncited", s)
+	}
+	run, _ = newRun(map[string][]string{telecom.Question: {"Yes, at Vartec [1, 2]."}}, j)
+	if got := run.Run(context.Background(), []Item{telecom}); !got[0].Passed() {
+		t.Errorf("a cited answer failed: %+v", got[0])
+	}
 }

@@ -218,7 +218,7 @@ func run(args []string, getenv cfg.Getenv, out io.Writer, d deps) error {
 	sums := evals.Summarize(answers)
 	for _, p := range paths {
 		if sm, ok := sums[p]; ok {
-			fmt.Fprintf(out, "  %s: %d/%d passed, %d errors, verdicts %v, answers %v\n", p, sm.Passed, sm.Questions, sm.Errors, sm.Verdicts, sm.Answers)
+			fmt.Fprintf(out, "  %s: %d/%d passed, %d errors, %d uncited, verdicts %v, answers %v\n", p, sm.Passed, sm.Questions, sm.Errors, sm.Uncited, sm.Verdicts, sm.Answers)
 		}
 	}
 	commit, dirty := evals.GitState(".")
