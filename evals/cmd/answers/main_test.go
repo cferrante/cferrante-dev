@@ -85,3 +85,31 @@ func TestABadVerdictShowsAsAnError(t *testing.T) {
 		t.Errorf("output:\n%s", out.String())
 	}
 }
+
+// -min fails the run when the gated file's pass rate is below it, after
+// writing the results, so a failing run is still on record.
+func TestMinFailsARunBelowItAndStillRecordsIt(t *testing.T) {
+	golden, results, _, args := setup(t)
+	partly := `{"verdict":"grounded","unsupported_claims":[],"answers_question":"partly","reasoning":"r"}`
+	args = append(args, "-min-file", golden)
+	if err := run(append(args, "-min", "1"), func(string) string { return "" }, &bytes.Buffer{}, fakes("Relay parses them [1].", grounded)); err != nil {
+		t.Errorf("2/2 against -min 1: %v", err)
+	}
+	err := run(append(args, "-min", "0.5"), func(string) string { return "" }, &bytes.Buffer{}, fakes("Relay parses them [1].", partly))
+	if err == nil || !strings.Contains(err.Error(), "0/2") || !strings.Contains(err.Error(), "below the minimum 0.50") {
+		t.Errorf("0/2 against -min 0.5: err = %v", err)
+	}
+	if raw, _ := os.ReadFile(results); bytes.Count(raw, []byte("\n")) != 2 {
+		t.Errorf("results has %d lines, want 2: the failing run must be recorded too", bytes.Count(raw, []byte("\n")))
+	}
+}
+
+// A gate over a file the run didn't include (an -ids subset, a wrong path)
+// would pass by checking nothing: refused instead.
+func TestMinRefusesAFileTheRunDidNotInclude(t *testing.T) {
+	_, _, _, args := setup(t)
+	err := run(append(args, "-min", "0.5", "-min-file", "evals/golden/public.jsonl"), func(string) string { return "" }, &bytes.Buffer{}, fakes("Relay parses them [1].", grounded))
+	if err == nil || !strings.Contains(err.Error(), "no questions from evals/golden/public.jsonl") {
+		t.Errorf("err = %v", err)
+	}
+}

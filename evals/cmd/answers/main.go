@@ -18,6 +18,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -100,6 +101,8 @@ func run(args []string, getenv cfg.Getenv, out io.Writer, d deps) error {
 	results := fs.String("results", "evals/results/answers.jsonl", `append one counts-only line per run; "" = none`)
 	detail := fs.String("detail", "build/evals/answers.jsonl", "every answer's text and verdict (git-ignored)")
 	pause := fs.Duration("pause", env.Duration("ANSWERS_PAUSE", 0), "wait between questions, to stay under a rate limit [ANSWERS_PAUSE]")
+	minRate := fs.Float64("min", env.Float("ANSWERS_MIN", 0), "fail when -min-file's pass rate is below this fraction; 0 = report only [ANSWERS_MIN]")
+	minFile := fs.String("min-file", env.String("ANSWERS_MIN_FILE", "evals/golden/public.jsonl"), "the golden file -min applies to [ANSWERS_MIN_FILE]")
 	retries := fs.Int("retries", env.Int("ANSWERS_RETRIES", 3), "retries for a failed turn or judgement [ANSWERS_RETRIES]")
 	retryWait := fs.Duration("retry-wait", env.Duration("ANSWERS_RETRY_WAIT", time.Minute), "wait before a retry; Groq's free tier limits tokens per minute [ANSWERS_RETRY_WAIT]")
 	fs.StringVar(&s.answerModel, "groq-model", env.String("GROQ_MODEL", "openai/gpt-oss-120b"), "answering model on Groq [GROQ_MODEL]")
@@ -159,6 +162,9 @@ func run(args []string, getenv cfg.Getenv, out io.Writer, d deps) error {
 			return fmt.Errorf("-ids: no such questions: %v", keys(want))
 		}
 		items = some
+	}
+	if *minRate > 0 && !slices.ContainsFunc(items, func(it evals.Item) bool { return it.File == *minFile }) {
+		return fmt.Errorf("-min: no questions from %s in this run, so the gate would check nothing", *minFile)
 	}
 
 	words, err := wording.Load(*messagesFile, os.ReadFile)
@@ -228,6 +234,10 @@ func run(args []string, getenv cfg.Getenv, out io.Writer, d deps) error {
 		return err
 	}
 	fmt.Fprintf(out, "answers and verdicts: %s\n", *detail)
+	if sm := sums[*minFile]; *minRate > 0 && float64(sm.Passed) < *minRate*float64(sm.Questions) {
+		return fmt.Errorf("%s: %d/%d passed (%.2f), below the minimum %.2f", *minFile, sm.Passed, sm.Questions,
+			float64(sm.Passed)/float64(sm.Questions), *minRate)
+	}
 	return nil
 }
 
