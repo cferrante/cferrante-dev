@@ -60,7 +60,10 @@ Development is on Ubuntu 26.04 under WSL2, with no Docker.
 - Groq's free tier allows 8,000 tokens a minute per model (measured 2026-11-10): a loop of live
   calls hits it within a few requests. Anything that calls a provider repeatedly must pace or
   retry (`make answers` waits a minute and retries up to 3 times) and count a failure as an error,
-  never a pass.
+  never a pass. It also allows 200,000 tokens a day per model (measured 2026-11-12): one full
+  `make answers` run, two 10-answer re-judges and part of a second run used the judge's whole day.
+  Plan about one full answer-eval run a day; on a daily limit `make answers` stops instead of
+  retrying.
 
 ## Parallel sessions
 
