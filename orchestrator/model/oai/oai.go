@@ -51,7 +51,7 @@ func (c *Client) Stream(ctx context.Context, req model.Request, onEvent func(mod
 	resp, err := c.post(ctx, wireRequest{
 		Model: c.Model, Messages: wireMessages(req), Tools: wireTools(req.Tools),
 		Stream: true, StreamOptions: &streamOptions{IncludeUsage: true},
-		ReasoningEffort: c.effort(req), MaxTokens: req.MaxTokens,
+		ReasoningEffort: c.effort(req), MaxTokens: req.MaxTokens, Temperature: req.Temperature,
 	}, "text/event-stream")
 	if err != nil {
 		return res, err
@@ -252,6 +252,7 @@ type wireRequest struct {
 	StreamOptions   *streamOptions  `json:"stream_options,omitempty"` // only allowed when streaming
 	ReasoningEffort string          `json:"reasoning_effort,omitempty"`
 	MaxTokens       int             `json:"max_completion_tokens,omitempty"`
+	Temperature     *float64        `json:"temperature,omitempty"` // a pointer, so 0 is sent
 	ResponseFormat  *responseFormat `json:"response_format,omitempty"`
 }
 

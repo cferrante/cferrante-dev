@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -224,4 +225,31 @@ func TestNovaThinkingIsStreamedAsReasoning(t *testing.T) {
 	if reasoning != " The visitor asks. " || answer != "Answer [1]." {
 		t.Errorf("reasoning %q, answer %q", reasoning, answer)
 	}
+}
+
+// A temperature is sent when the request sets one, including 0, and left to
+// the provider otherwise.
+func TestTemperatureIsSentOnlyWhenSet(t *testing.T) {
+	zero := 0.0
+	for _, tc := range []struct {
+		temp *float64
+		want *float32
+	}{{nil, nil}, {&zero, aws.Float32(0)}} {
+		api := &fakeAPI{events: []types.ConverseStreamOutput{stop(types.StopReasonEndTurn)}}
+		collect(t, &Client{API: api, Model: "m"}, model.Request{Temperature: tc.temp})
+		var got *float32
+		if api.in.InferenceConfig != nil {
+			got = api.in.InferenceConfig.Temperature
+		}
+		if (got == nil) != (tc.want == nil) || (got != nil && *got != *tc.want) {
+			t.Errorf("request temperature set: %v; sent %s, want %s", tc.temp != nil, show(got), show(tc.want))
+		}
+	}
+}
+
+func show(f *float32) string {
+	if f == nil {
+		return "none"
+	}
+	return fmt.Sprint(*f)
 }

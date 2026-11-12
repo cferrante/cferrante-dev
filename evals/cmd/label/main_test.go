@@ -70,7 +70,8 @@ func TestLabellingIsBlindAndSavedAsYouGo(t *testing.T) {
 	if !strings.Contains(shown, "Relay parses telephone call records") && !strings.Contains(shown, "Kiln is a pottery scheduling tool") {
 		t.Errorf("the source text isn't shown:\n%s", shown)
 	}
-	for _, want := range []string{"Question:", "Expected answer:", "Sources:", "Answer:", "please type one of the letters", "1 of 2 labelled"} {
+	for _, want := range []string{"Question:", "Expected answer:", "Sources:", "Answer:", "please type one of the letters", "1 of 2 labelled",
+		"saying what the documents don't cover"} {
 		if !strings.Contains(shown, want) {
 			t.Errorf("output lacks %q:\n%s", want, shown)
 		}

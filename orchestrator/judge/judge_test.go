@@ -97,6 +97,9 @@ func TestTheRequestNumbersSourcesAndAsksForTheSchema(t *testing.T) {
 			t.Errorf("judge's message lacks %q:\n%s", want, user)
 		}
 	}
+	if f.got.Temperature == nil || *f.got.Temperature != 0 {
+		t.Errorf("temperature %v, want 0: the same answer must get the same verdict (plan 6.3c)", f.got.Temperature)
+	}
 	if !strings.Contains(f.got.System, "not_applicable") || !strings.Contains(f.got.System, "unsupported_claims") {
 		t.Errorf("system prompt doesn't explain the fields:\n%s", f.got.System)
 	}

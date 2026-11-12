@@ -160,6 +160,9 @@ func TestStreamSendsRequest(t *testing.T) {
 	if got["stream"] != true || got["model"] != "m" || got["reasoning_effort"] != "low" || got["max_completion_tokens"] != float64(500) {
 		t.Errorf("body = %v", got)
 	}
+	if _, ok := got["temperature"]; ok {
+		t.Errorf("temperature sent though the request left it to the provider: %v", got["temperature"])
+	}
 	if so, _ := got["stream_options"].(map[string]any); so["include_usage"] != true {
 		t.Errorf("stream_options = %v", got["stream_options"])
 	}

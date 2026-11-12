@@ -161,8 +161,14 @@ func (c *Client) input(req model.Request) (*bedrockruntime.ConverseStreamInput, 
 	if req.System != "" {
 		in.System = []types.SystemContentBlock{&types.SystemContentBlockMemberText{Value: req.System}}
 	}
-	if req.MaxTokens > 0 {
-		in.InferenceConfig = &types.InferenceConfiguration{MaxTokens: aws.Int32(int32(req.MaxTokens))}
+	if req.MaxTokens > 0 || req.Temperature != nil {
+		in.InferenceConfig = &types.InferenceConfiguration{}
+		if req.MaxTokens > 0 {
+			in.InferenceConfig.MaxTokens = aws.Int32(int32(req.MaxTokens))
+		}
+		if req.Temperature != nil {
+			in.InferenceConfig.Temperature = aws.Float32(float32(*req.Temperature))
+		}
 	}
 	for _, m := range req.Messages {
 		var role types.ConversationRole

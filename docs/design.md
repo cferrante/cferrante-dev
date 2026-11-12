@@ -416,9 +416,14 @@ finishes and reported via the `judge` event. Input: the answer and the retrieved
   as an inconsistent verdict, as is a value outside the lists above.
 - `answers_question` compares the answer with an expected answer when one is given (the golden
   set's `expected_answer`, step 6.3); without one (the live judge) it must be `not_applicable`.
-  `yes` means it gives the expected answer's main point: details listed there are examples, not
+  `yes` means it covers the expected answer as written: details listed there are examples, not
   a checklist. When the expected answer names steps ("reflects the problem, then relates it
-  to…"), each step must be there.
+  to…"), each step must be there, and so must saying what the documents don't cover when the
+  expected answer asks for it; that way a corpus gap shows as a failure. The labelling screen
+  shows the same rule.
+- The judge runs at temperature 0, so the same answer gets the same verdict; without it, two
+  re-judges of one sample differed on at least 4 of 20 answers, and with 10 labels one flip
+  moves agreement by 10 points.
 - The judge (`orchestrator/judge`) sees the sources numbered as the answer turn numbered them, so
   a citation `[2]` means the same chunk to both. It uses Groq's strict structured output (step
   5.4) on `JUDGE_MODEL` (default `openai/gpt-oss-20b`), a smaller model than the one it grades.
@@ -589,7 +594,8 @@ before its scores are trusted:
   prompt is fixed, re-judged on the same sample (`-rejudge`, a diagnostic: those labels shaped
   the fix) and then checked on a **fresh** sample (`-name fresh`: 5 + 5 answers from a new run,
   none of them questions already sampled), labelled blind. The 80% bar applies to the fresh
-  sample.
+  sample. A further round takes another name (`-name fresh2`) from the same run, and its report
+  re-judges with today's judge (`-report -rejudge -name fresh2`).
 - A label file with an unknown value, a duplicate, or an id not in the sample is refused, and
   the report refuses a sample that isn't fully labelled.
 
