@@ -72,6 +72,8 @@ Return JSON with these fields:
 
 Judge only what the answer says against the sources and the expected answer. Don't reward length or tone.`
 
+var zero = 0.0
+
 // Judge asks the model for a verdict and checks it.
 func (j Judge) Judge(ctx context.Context, in Input) (Result, error) {
 	var text strings.Builder
@@ -79,6 +81,7 @@ func (j Judge) Judge(ctx context.Context, in Input) (Result, error) {
 		System:         system,
 		Messages:       []model.Message{{Role: model.User, Content: message(in)}},
 		ResponseSchema: schema,
+		Temperature:    &zero, // the same answer must get the same verdict (plan 6.3c)
 	}, func(e model.Event) error {
 		if e.Kind == model.Text {
 			text.WriteString(e.Text)

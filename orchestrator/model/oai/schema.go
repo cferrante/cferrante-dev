@@ -52,6 +52,7 @@ func (c *Client) structured(ctx context.Context, req model.Request, onEvent func
 	start := time.Now()
 	resp, err := c.post(ctx, wireRequest{
 		Model: c.Model, Messages: wireMessages(req), ReasoningEffort: c.effort(req), MaxTokens: req.MaxTokens,
+		Temperature: req.Temperature,
 		ResponseFormat: &responseFormat{Type: "json_schema",
 			JSONSchema: jsonSchema{Name: "response", Strict: true, Schema: req.ResponseSchema}},
 	}, "application/json")

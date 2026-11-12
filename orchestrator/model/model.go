@@ -23,7 +23,8 @@ type Request struct {
 	Messages        []Message
 	ResponseSchema  json.RawMessage // JSON Schema; non-nil = constrained JSON output
 	MaxTokens       int
-	ReasoningEffort string // "low" | "medium" | "high" | "" (provider default)
+	ReasoningEffort string   // "low" | "medium" | "high" | "" (provider default)
+	Temperature     *float64 // nil = provider default; 0 for repeatable output, as the judge needs
 }
 
 // Role is who wrote a message.
