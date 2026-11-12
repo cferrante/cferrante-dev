@@ -261,3 +261,53 @@ func TestAnUncitedAnswerDoesNotPassUnlessItDeclines(t *testing.T) {
 		t.Errorf("a cited answer failed: %+v", got[0])
 	}
 }
+
+// A daily limit doesn't clear in a minute: retrying it only burns time
+// (run 3 of 2026-11-12 spent an hour at 3 minutes a question). The run
+// stops calling the provider and marks every later question not run.
+func TestADailyLimitStopsTheRunInsteadOfRetrying(t *testing.T) {
+	daily := errors.New(`model: HTTP 429: {"error":{"message":"Rate limit reached for model ` + "`openai/gpt-oss-20b`" + ` on tokens per day (TPD): Limit 200000, Used 199646"}}`)
+	j := &fakeJudge{err: daily}
+	run, ft := newRun(map[string][]string{telecom.Question: {"Yes [1]."}, weather.Question: {"No."}}, j)
+	var waits int
+	run.Retries, run.RetryWait, run.Sleep = 3, time.Minute, func(context.Context, time.Duration) { waits++ }
+	got := run.Run(context.Background(), []Item{telecom, weather, secret})
+	if waits != 0 || len(j.got) != 1 || len(ft.callers) != 1 {
+		t.Errorf("%d waits, %d judgements, %d turns: want 0, 1, 1 (no retry, nothing after the limit)", waits, len(j.got), len(ft.callers))
+	}
+	if len(got) != 3 {
+		t.Fatalf("%d answers, want all 3 accounted for", len(got))
+	}
+	for _, a := range got {
+		if a.Passed() || !strings.Contains(a.Err, "daily limit") {
+			t.Errorf("%s: err %q, want a daily-limit error and no pass", a.Item.ID, a.Err)
+		}
+	}
+}
+
+// dailyTurn fails as the real turn does when the answering model hits its
+// daily limit: the visitor sees a generic error, and the cause is only in
+// the step's detail.
+type dailyTurn struct{ calls int }
+
+func (d *dailyTurn) Turn(_ context.Context, _ auth.Caller, _ agent.TurnRequest, w *sse.Writer) error {
+	d.calls++
+	w.StepStart("s1", "model", "Thinking")
+	w.StepEnd("s1", "error", map[string]any{"error": "HTTP 429: Rate limit reached on tokens per day (TPD): Limit 200000"})
+	return w.Error("model_unavailable", "the model couldn't answer right now", true)
+}
+
+func TestADailyLimitOnTheAnsweringModelStopsTheRunToo(t *testing.T) {
+	dt := &dailyTurn{}
+	rec := &RecordingRetriever{Retriever: fakeRetriever{chunks}}
+	var waits int
+	run := &AnswerRunner{Turn: dt, Retrieved: rec, Judge: &fakeJudge{}, Retries: 3, RetryWait: time.Minute,
+		Sleep: func(context.Context, time.Duration) { waits++ }}
+	got := run.Run(context.Background(), []Item{telecom, weather})
+	if dt.calls != 1 || waits != 0 {
+		t.Errorf("%d turns, %d waits: want 1 and 0", dt.calls, waits)
+	}
+	if !strings.Contains(got[0].Err, "tokens per day") || !strings.Contains(got[1].Err, "daily limit") {
+		t.Errorf("errors %q / %q: want the cause, then not run", got[0].Err, got[1].Err)
+	}
+}

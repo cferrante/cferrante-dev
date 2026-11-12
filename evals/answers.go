@@ -68,7 +68,15 @@ type AnswerRunner struct {
 	Retries   int
 	RetryWait time.Duration
 	Sleep     func(ctx context.Context, d time.Duration)
+
+	stopped bool // a daily limit was hit: nothing more is sent
 }
+
+// dailyLimit: the provider refused for a per-day quota (Groq: "tokens per
+// day (TPD)", "requests per day (RPD)"). Waiting a minute won't clear it.
+func dailyLimit(err string) bool { return strings.Contains(err, " per day ") }
+
+const notRun = "not run: the provider's daily limit was reached earlier in this run"
 
 // Answer is one question's outcome. Err is set when the turn or the judge
 // failed; such an answer never passes.
@@ -109,6 +117,10 @@ func (r *AnswerRunner) Run(ctx context.Context, items []Item) []Answer {
 			case <-ctx.Done():
 			case <-time.After(r.Pause):
 			}
+		}
+		if r.stopped {
+			out = append(out, Answer{Item: it, Err: notRun})
+			continue
 		}
 		out = append(out, r.one(ctx, it))
 	}
@@ -152,6 +164,10 @@ func (r *AnswerRunner) one(ctx context.Context, it Item) (a Answer) {
 			a.Err = "turn: " + failure
 		}
 		a.Text, chunks = text, r.Retrieved.take()
+		if dailyLimit(a.Err) {
+			r.stopped, a.Err = true, "daily limit, run stopped: "+a.Err
+			return a
+		}
 		if a.Err == "" || a.Attempts > r.Retries || ctx.Err() != nil {
 			break
 		}
@@ -173,6 +189,10 @@ func (r *AnswerRunner) one(ctx context.Context, it Item) (a Answer) {
 			return a
 		}
 		a.Err = "judge: " + err.Error()
+		if dailyLimit(a.Err) {
+			r.stopped, a.Err = true, "daily limit, run stopped: "+a.Err
+			return a
+		}
 		if a.Attempts > r.Retries || ctx.Err() != nil {
 			return a
 		}
@@ -181,9 +201,12 @@ func (r *AnswerRunner) one(ctx context.Context, it Item) (a Answer) {
 	}
 }
 
-// readStream joins the answer's tokens and reports an error event's code.
+// readStream joins the answer's tokens and reports an error event's code,
+// with the cause a failed step recorded: the visitor's error is generic on
+// purpose, but the runner must tell a daily limit from one that clears.
 func readStream(raw []byte) (text, failure string) {
 	var b strings.Builder
+	var cause string
 	sc := bufio.NewScanner(bytes.NewReader(raw))
 	sc.Buffer(nil, 1<<20)
 	event := ""
@@ -193,17 +216,27 @@ func readStream(raw []byte) (text, failure string) {
 		case strings.HasPrefix(line, "event: "):
 			event = strings.TrimPrefix(line, "event: ")
 		case strings.HasPrefix(line, "data: "):
-			var d struct{ Text, Code, Message string }
+			var d struct {
+				Text, Code, Message, Status string
+				Detail                      struct{ Error string }
+			}
 			if json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &d) != nil {
 				continue
 			}
 			switch event {
 			case "token":
 				b.WriteString(d.Text)
+			case "step_end":
+				if d.Status == "error" && d.Detail.Error != "" {
+					cause = d.Detail.Error
+				}
 			case "error":
 				failure = d.Code + ": " + d.Message
 			}
 		}
+	}
+	if failure != "" && cause != "" {
+		failure += " (" + cause + ")"
 	}
 	return b.String(), failure
 }
