@@ -262,6 +262,7 @@ func label(in io.Reader, out io.Writer, sample []sampled, labels []evals.Label, 
 			fmt.Fprintln(out, "  please type one of the letters shown, or q to stop")
 		}
 	}
+	fmt.Fprint(out, rubric)
 	for _, s := range sample {
 		if done[s.ID] {
 			continue
@@ -304,6 +305,13 @@ func label(in io.Reader, out io.Writer, sample []sampled, labels []evals.Label, 
 	}
 	return nil
 }
+
+// rubric is shown once before labelling, so you and the judge read
+// answers_question the same way (agreed 2026-11-12, plan 6.3c).
+const rubric = `Answers the question means it covers the expected answer as written.
+Details listed there are examples, not a checklist. Named steps must be there,
+and so must saying what the documents don't cover, when the expected answer asks for it.
+`
 
 func appendLine(path string, line []byte) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
