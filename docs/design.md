@@ -595,7 +595,14 @@ before its scores are trusted:
   the fix) and then checked on a **fresh** sample (`-name fresh`: 5 + 5 answers from a new run,
   none of them questions already sampled), labelled blind. The 80% bar applies to the fresh
   sample. A further round takes another name (`-name fresh2`) from the same run, and its report
-  re-judges with today's judge (`-report -rejudge -name fresh2`).
+  re-judges with today's judge (`-report -rejudge -name fresh2`). Trusted 2026-11-12 on fresh2:
+  verdict 10/10, `answers_question` 8/10 and 9/10 over two re-judges.
+- `make answers` takes a minimum pass rate (`-min`, `ANSWERS_MIN`) over one golden file
+  (`-min-file`, the public set by default; held-out and invitee are too small to gate on). The
+  results line is written first, so a failing run stays on record; a gate over a file with no
+  questions in the run is refused. It can't run in CI (it needs the Groq key, takes about 20
+  minutes and a day's judge quota), so it is run by hand before merging a change to the prompt,
+  corpus, model or retrieval.
 - A label file with an unknown value, a duplicate, or an id not in the sample is refused, and
   the report refuses a sample that isn't fully labelled.
 
