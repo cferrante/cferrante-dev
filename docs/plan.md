@@ -48,6 +48,7 @@ marked 🧑 need you (accounts, payments, decisions); everything else I can driv
 | 🧑 JS test runner for the frontend (no npm toolchain) | 4.2 | ✅ Deno, pinned (2026-11-02); Node rejected for its security upkeep |
 | 🧑 Groq account + API key (free) | 1.5 | ✅ key in SSM via `infra/bootstrap/aws/06-groq-key.sh` |
 | 🧑 Neon account (free) | 9.1 | not started |
+| 🧑 Email at `cferrante.dev`: forwarder + SES, or all-AWS | 11 (optional) | open; AWS accounts use Gmail plus-addresses until then |
 
 ([D1]–[D5] are defined in [design §12](design.md#12-open-decisions).)
 
@@ -264,6 +265,25 @@ Site stays private (unlisted, chat behind a temporary allow-list) until M5.
 | **10.3** Full benchmark run, deployed | [Results tables](benchmarks.md#results) filled from recorded runs |
 | **10.4** README status → launched; remove allow-list | Public |
 
+## Phase 11 — Optional: email at cferrante.dev
+
+Personal addresses such as `colleen.ferrante@cferrante.dev`, kept near $0, and moving AWS
+accounts' root emails off Gmail plus-addresses onto them. Not needed for launch; take it when
+wanted. Recommended shape: a free forwarder (ImprovMX or Forward Email) delivers to Gmail, and
+Gmail sends *as* the address through Amazon SES (about $0.10 per 1,000 emails). Prices from
+memory, to be checked when the phase starts. SES's domain identity also serves 7.5's alarm
+email, 8.3's invite email and call-event-pipeline's optional real alert email.
+
+| Step | Test that must fail first | Done when |
+|---|---|---|
+| **11.1** 🧑 Choose: forwarder + SES, or all-AWS (SES receiving + Lambda forwarder) | — (decision) | Choice and prices recorded in the deviations log |
+| **11.2** `07-email.sh`: MX, SPF, DKIM and DMARC records in Route 53; SES domain identity; SES production access requested (🧑 form) | `check.sh` shows ✗ for email DNS and SES identity | Mail to the address arrives in Gmail; a message sent from Gmail through SES passes SPF, DKIM and DMARC (Gmail's "Show original") |
+| **11.3** `08-account-emails.sh`: enable Organizations trusted access for Account Management, then `start-primary-email-update` / `accept-primary-email-update` (code sent to the new address) for each member account, and move budget alert subscribers (`update-subscriber`) | `check.sh` reports each account's primary email and budget subscriber still on Gmail | `check.sh` all ✓; a test budget alert reaches the new address |
+
+The new address must receive mail **before** 11.3, since the confirmation code goes there; and
+whichever address an account uses must keep receiving mail, or its password-reset and security
+emails are lost.
+
 ---
 
 ## Known issues (deferred)
@@ -374,6 +394,7 @@ Any change from this plan: what changed, why, and which step.
 | 2026-11-10 | 6.2 | CI scores retrieval from a committed Titan embedding cache, not a live model; the gate covers only the public set; the held-out and invitee sets stay local, logged in `evals/results/hitk.jsonl`; the prompt hash moves to 6.3's answer evals | CI has no Ollama, AWS credentials or private repo. The cache gives the production embedder's vectors with no secret and no network call, and fails on any text it lacks, so it can't go stale silently. Titan from CI would need the OIDC role planned for 7.4; Ollama or the hash embedder in CI would measure a different model. Retrieval doesn't read the system prompt, so its hash means nothing to hit@k but matters to answer evals |
 | 2026-11-10 | 6.3 | Split into 6.3a (the judge), 6.3b (the answer-eval runner) and 6.3c (agreement with your labels). Groq answers and judges eval runs (gpt-oss-120b and gpt-oss-20b), not Ollama. The judge also says whether the answer matches `expected_answer` (`answers_question`) | One PR each, as the steps are independent and each has its own failing test. Ollama took 37 s per answer on the laptop CPU, so a 64-question run would take 40+ minutes with a weak 4B judge; Groq is free and is what visitors get. A grounded answer can still miss the question, so groundedness alone can't score the golden set |
 | 2026-11-11 | 6.3c | Your labels: verdict 13/20 (65%), `answers_question` 10/20 (50%), so the judge isn't trusted. The judge was stricter than you on interpretation (A: g-054, g-056, g-057) and on listed details (B: g-064, h-001, g-003, g-016); you were stricter on missing steps and overstated claims (C: g-030, h-005, g-017, g-046) and on missing citations (D: g-001, h-007). The plan said "re-check on the same sample"; now the fix is re-judged on those 20 only as a diagnostic, and trusted on a fresh blind sample of 10. A non-decline answer must cite a source to pass, checked in code | Re-checking a prompt on the labels that shaped it would overfit, as editing the corpus to its own golden questions did in 6.1. A–C are judging rules, so they go in the prompt; D is countable, so code checks it deterministically rather than asking a model |
+| 2026-11-13 | 11 (new) | Added optional Phase 11: email at `cferrante.dev`, and moving AWS accounts' root emails onto it | Raised while bootstrapping call-event-pipeline's account, which starts on a Gmail plus-address. Member-account root emails can be changed later from the management account (verified in the AWS CLI's documentation), so nothing is lost by deferring |
 
 ## Code review log
 
