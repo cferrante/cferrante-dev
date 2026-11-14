@@ -434,6 +434,9 @@ finishes and reported via the `judge` event. Input: the answer and the retrieved
 
 ## 8. Data model (Neon Postgres)
 
+> The `invites` table below is superseded by [§15.6](#156-data-model), which drops Cognito
+> and keys invites by a generated id.
+
 ```sql
 create table invites (
   cognito_sub  text primary key,
@@ -650,12 +653,14 @@ Used in [§4](#4-model-layer).
 ### D2. Notification channel
 
 How `request_meeting` / `send_message` reach me: Amazon SES (check free-tier terms) or a push
-service. Used in [§6](#6-tools-and-authorization).
+service. Used in [§6](#6-tools-and-authorization). **Proposed 2026-11-14: SES**
+([§15.11](#1511-decisions-for-review)).
 
 ### D3. Migrations tool
 
 Hand-rolled Go runner vs `goose` (adds a dependency). Used in
-[§8](#8-data-model-neon-postgres).
+[§8](#8-data-model-neon-postgres). **Proposed 2026-11-14: hand-rolled**
+([§15.11](#1511-decisions-for-review)).
 
 ### D4. Thought stream fallback
 
@@ -672,6 +677,13 @@ x86_64 or arm64 (Graviton2, about 20% cheaper per GB-second; both are inside the
 Proposed: x86_64, which builds and tests natively on the development machine and is proven by
 spikes 1.2–1.3. Revisited with measurements in plan step 7.6; the engine's portability rule
 (plan Phase 2) keeps switching cheap.
+
+### D6. What an approved invitee gets
+
+Proposed: `/demo` shows a short written tour of call-event-pipeline with its measured results,
+and a way to book a live walkthrough, in which I run its on-demand AWS environment
+(`make demo-up`, which tears itself down within 3 hours). A self-serve environment started by a
+stranger would need its own cost and abuse controls, so it waits until there is demand.
 
 ### Carried from README
 
@@ -812,3 +824,277 @@ Plan Phase 4 builds it.
   stack on narrow screens.
 - **Tests:** `deno test` with no permissions ([deny-by-default](concepts.md#deny-by-default-permissions)),
   run by `make test` and CI.
+
+## 15. Portfolio site and demo invites
+
+> **Status: proposed 2026-11-14, for review.** A portfolio-first track that puts `cferrante.dev`
+> on AWS before the Context Concierge is deployed. The concierge (§1–§14) is paused, not dropped:
+> it becomes a feature of this site later and reuses the same distribution, sign-in and database.
+> Plan steps follow once this section is agreed.
+
+### 15.1 Scope
+
+**In scope:** static portfolio pages; a *Request a demo* form for call-event-pipeline; my approval
+by CLI; passwordless sign-in by [magic link](concepts.md#magic-link) for approved people; one
+page only they can see.
+
+**Not in scope:** self-serve demo environments (approved people book a live walkthrough, see
+[D6](#d6-what-an-approved-invitee-gets)); the concierge's chat; an admin web page (the CLI is the
+admin interface); passwords or social sign-in.
+
+### 15.2 Components
+
+| Component | Owns | Talks to |
+|---|---|---|
+| `site/` | Static pages (HTML, the existing Tailwind build), the form and sign-in scripts | `/api/*` (same origin) |
+| `portal/` (Go) | The API Lambda: demo requests, sign-in links, sessions, the gated page's data | Neon Postgres, SES, SSM |
+| `portal/cmd/invite` (Go) | My admin CLI: `list`, `approve`, `decline` | Neon Postgres, SES, SSM (through my SSO session) |
+| `portal/migrations/` | Numbered SQL files and the Go runner ([D3](#d3-migrations-tool)) | Neon Postgres |
+| `infra/` (OpenTofu) | S3, CloudFront, ACM, Route 53 records, the Lambda, SES identity | AWS |
+
+The portal Lambda is **plain Go with no cgo**, a separate binary in the same module, so it never
+builds the C++ engine. It has nothing to do with the concierge's orchestrator until the concierge
+is deployed, when both share §15.5's session check.
+
+### 15.3 Architecture
+
+```mermaid
+flowchart LR
+    B[Browser] -->|HTTPS| CF[CloudFront<br/>flat-rate Free plan]
+    CF -->|/*| S3[(S3<br/>static pages)]
+    CF -->|/api/*, no cache| L[Go portal<br/>Lambda Function URL]
+    L --> PG[(Neon Postgres<br/>invites, tokens)]
+    L --> SES[Amazon SES<br/>email]
+    L --> SSM[SSM<br/>secrets]
+    ME[invite CLI<br/>on my laptop] --> PG
+    ME --> SES
+```
+
+- **One origin.** Pages and API share `cferrante.dev`, so there is no CORS, and the session
+  cookie never leaves the site.
+- **Origin access control** on both origins: S3 and the Function URL (`AWS_IAM` auth) answer only
+  CloudFront. Browser POSTs send `x-amz-content-sha256`, as spike 1.4 found OAC requires.
+- **No VPC.** The Lambda reaches Neon over TLS through Neon's pooled endpoint, and SES and SSM
+  over their public endpoints. A VPC would need paid NAT or endpoints for those.
+- **Security headers** on every response through a CloudFront response-headers policy: the CSP of
+  [§14](#14-frontend), HSTS, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`.
+
+### 15.4 Flows
+
+**Request a demo** (anyone):
+1. The visitor submits email and an optional note on the call-event-pipeline page.
+2. `POST /api/demo-requests` trims and lowercases the email, checks lengths and format, and
+   inserts a `pending` invite. An email that already exists changes nothing.
+3. Only a *new* row emails me (SES, to the address in SSM). The requester gets no email at this
+   point, so the form can't be used to send mail to someone else.
+4. The reply is always `202` with "Thanks. If it's approved, you'll get an email." whether the
+   email was new, pending, approved or declined, so the form can't reveal who is on the list
+   ([user enumeration](concepts.md#user-enumeration)).
+
+**Approve** (me): `invite list` shows pending requests; `invite approve <email>` sets `approved`,
+then emails the person a welcome with a sign-in link (the same link as below). Approval is
+committed before the email is sent; if sending fails, the CLI says so and
+`invite approve` can be re-run, which sends a fresh link without changing anything else.
+
+**Sign in** (approved people):
+1. On `/sign-in` the visitor enters their email. `POST /api/sign-in` always answers `202` with
+   "If this email is approved, a sign-in link is on its way."
+2. Only if the invite is `approved` and fewer than 3 links were issued to it in the last hour:
+   create a token, store its hash, email the link.
+3. The link is `https://cferrante.dev/sign-in#t=<token>`. The token is in the **fragment**, which
+   browsers never send to a server, so it can't appear in CloudFront logs or a `Referer` header.
+4. The page shows a **Sign in** button. Its click sends the token in `POST /api/sessions`. Nothing
+   happens on page load, because email security scanners open links and would otherwise use up a
+   single-use token.
+5. The server claims the token in one statement (below). On success it sets the session cookie
+   and the page goes to `/demo`. On any failure the reply is the same `400`, "This link has
+   expired or was already used. Request a new one.", whatever the cause.
+
+**Gated page:** `/demo` is a static page; its content comes from `GET /api/demo`, which returns
+`401` without a valid session, and the page then links to `/sign-in`.
+
+**Sign out:** `POST /api/sign-out` expires the cookie.
+
+### 15.5 Tokens and sessions
+
+- **Sign-in token:** 32 bytes from `crypto/rand`, base64url in the link. Only `sha256(token)` is
+  stored, so a database leak gives no usable links. Expires after 15 minutes; used at most once.
+- **Claiming a token** is one atomic statement, so a double click or a replay can't use it twice:
+
+  ```sql
+  UPDATE login_tokens t SET used_at = now()
+  FROM invites i
+  WHERE t.token_hash = $1 AND t.used_at IS NULL AND t.expires_at > now()
+    AND i.id = t.invite_id AND i.status = 'approved'
+  RETURNING t.invite_id;
+  ```
+
+- **Session cookie:** `__Host-session`, `HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=604800`
+  (7 days). The value is `invite_id`, expiry time and an HMAC-SHA256 over both with a key from SSM.
+  The `__Host-` prefix makes the browser refuse it unless it is `Secure`, has `Path=/` and no
+  `Domain`, so a subdomain can never set or read it.
+- **Every gated request re-checks the database:** a valid signature is necessary but not
+  sufficient; the invite must still be `approved`. Declining someone ends their session at once.
+  These requests are rare, so the extra query costs nothing a visitor would notice.
+- **Rotating the signing key** signs everyone out, which is acceptable.
+- **CSRF:** state-changing endpoints are POST with a JSON body, the cookie is `SameSite=Lax`, and
+  the Lambda rejects a request whose `Origin` isn't `https://cferrante.dev`.
+
+### 15.6 Data model
+
+Replaces [§8](#8-data-model-neon-postgres)'s Cognito-keyed `invites` table. Every constraint has
+a name, so a migration can drop and re-add it, and tests can check *which* rule a bad row broke.
+
+```sql
+CREATE TABLE invites (
+  id           bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  email        text NOT NULL
+               CONSTRAINT invites_email_unique     UNIQUE
+               CONSTRAINT invites_email_normalised CHECK (email = lower(btrim(email)))
+               CONSTRAINT invites_email_length     CHECK (length(email) BETWEEN 3 AND 254),
+  status       text NOT NULL DEFAULT 'pending'
+               CONSTRAINT invites_status_valid     CHECK (status IN ('pending','approved','declined')),
+  note         text
+               CONSTRAINT invites_note_length      CHECK (length(note) <= 1000),
+  requested_at timestamptz NOT NULL DEFAULT now(),
+  decided_at   timestamptz,
+  CONSTRAINT invites_decided_at_matches_status
+    CHECK ((status = 'pending') = (decided_at IS NULL))
+);
+
+CREATE TABLE login_tokens (
+  token_hash bytea
+             CONSTRAINT login_tokens_pkey        PRIMARY KEY
+             CONSTRAINT login_tokens_hash_length CHECK (length(token_hash) = 32),
+  invite_id  bigint NOT NULL
+             CONSTRAINT login_tokens_invite_fk   REFERENCES invites(id) ON DELETE CASCADE,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  expires_at timestamptz NOT NULL,
+  used_at    timestamptz,
+  CONSTRAINT login_tokens_expiry_after_creation CHECK (expires_at > created_at)
+);
+CREATE INDEX login_tokens_invite_id_idx ON login_tokens (invite_id, created_at);
+```
+
+- **Surrogate key.** `id` is the primary key and `email` is `UNIQUE`: an email can change in one
+  row, and other tables (later the concierge's logs) hold a number, never an address
+  ([natural vs surrogate key](concepts.md#natural-vs-surrogate-key)).
+- **`text` with `CHECK`, not `varchar(n)` or `ENUM`.** In Postgres `varchar(n)` is `text` plus a
+  length check, and an enum value can't be removed. A named `CHECK` changes with a two-line
+  migration.
+- **Limits live in two places on purpose.** Go checks first to give a friendly error; the
+  constraint is the backstop. A test keeps the two equal (15.8).
+- **The index on `(invite_id, created_at)`** serves both the cascade delete (Postgres doesn't index
+  foreign keys itself) and the "3 links an hour" count.
+- **Clean-up:** a token is useless once used or expired. `invite` CLI runs
+  `DELETE FROM login_tokens WHERE expires_at < now() - interval '1 day'` on each use, which is
+  enough at this volume; a scheduled job can come later.
+- **Deleting someone:** `DELETE FROM invites WHERE email = $1` removes their tokens too.
+
+### 15.7 Limits and abuse
+
+| Guard | Where | Why |
+|---|---|---|
+| Email ≤ 254, note ≤ 1,000 characters; request body ≤ 4 KB | Go, then constraints | No oversized rows or bodies |
+| At most 3 sign-in emails per invite per hour | Go, counted from `login_tokens` | No inbox flooding, small SES bill |
+| Sign-in emails only to `approved` addresses; request form emails only me | Go | A stranger's address can never be mailed through the site |
+| At most 50 new requests a day site-wide; past that, `202` but no insert or email | Go, counted from `invites` | Caps my inbox and SES cost if a bot finds the form |
+| Hidden form field that people never fill; if it's filled, `202` and nothing else | Go | Stops simple form bots for free |
+| Lambda timeout 10 s, memory 256 MB, a concurrency cap if the account's quota allows one | OpenTofu | Bounds cost under a flood |
+
+The daily cap means a bot could block real requests for the rest of a day. That is accepted at
+this traffic; a CAPTCHA can come later if it happens.
+
+### 15.8 Tests (each written first and seen to fail)
+
+**Database** (Go tests against a real Postgres: native locally, the runner's preinstalled
+Postgres in CI). Each bad insert asserts the error's `ConstraintName`, not just that it failed, and breaks
+**exactly one** rule: a row that breaks two reports whichever Postgres checks first, so the test
+would pass or fail by accident. (Found by a dry run of this schema on Postgres 18: `banana` with
+no `decided_at` also broke `invites_decided_at_matches_status`.)
+
+| Test | Expects |
+|---|---|
+| Email with capitals or surrounding spaces | `invites_email_normalised` |
+| Same email twice | `invites_email_unique` |
+| Email of 255 characters | `invites_email_length` |
+| Status `banana`, with `decided_at` set | `invites_status_valid` |
+| Note of 1,001 characters | `invites_note_length` |
+| `approved` with no `decided_at`; `pending` with one | `invites_decided_at_matches_status` |
+| Token hash of 31 bytes | `login_tokens_hash_length` |
+| Token for invite id that doesn't exist | `login_tokens_invite_fk` |
+| `expires_at` before `created_at` | `login_tokens_expiry_after_creation` |
+| Deleting an invite | Its tokens are gone too |
+| **Go and the database agree on limits:** a note of exactly `MaxNoteLen` and an email of exactly `MaxEmailLen` insert; one character more fails with the named constraint | Changing either side alone fails this test |
+
+**Migrations:** an empty database migrates to the latest version; running again changes nothing;
+a migration with a syntax error leaves the database as it was (each file runs in a transaction).
+
+**Portal handlers** (Go, `httptest`, real Postgres, a fake mailer that records messages):
+- `POST /api/demo-requests`: a new email inserts `pending` and mails me once; a repeat, an
+  approved and a declined email each return the same `202` body and send nothing; `Jane@Example.com `
+  is stored as `jane@example.com`; a note of `MaxNoteLen + 1` gets `400`; a filled hidden field and the
+  51st request of the day each return `202` and insert nothing; a body over 4 KB gets `413`.
+- `POST /api/sign-in`: approved gets a link; pending, declined and unknown emails get the same
+  `202` body and no mail; the 4th request within an hour sends nothing.
+- `POST /api/sessions`: a valid token sets a `__Host-session` cookie with every attribute in
+  15.5; the same token again, an expired one, an unknown one, and one whose invite was declined
+  after the link was sent all get the same `400` body.
+- **Concurrency:** two claims of one token at once: exactly one succeeds.
+- `GET /api/demo`: no cookie, a tampered cookie, an expired cookie and a cookie for a declined
+  invite each get `401`; a valid one gets `200`.
+- Any POST with a missing or foreign `Origin` gets `403`.
+- **Nothing private in logs:** a handler test captures the log output and fails if it contains
+  the email address or the token.
+
+**`invite` CLI:** `approve` on a pending email sets `approved` and `decided_at` and sends one
+email; `approve` on an unknown email fails with a clear message; a send failure leaves the invite
+approved and exits non-zero naming the step.
+
+**Frontend** (Deno, no permissions): the sign-in page reads the token from the fragment and
+never from the query string; it sends nothing until the button is clicked; it clears the fragment
+from the address bar after reading it.
+
+**After deploy** (`curl` smoke tests): `https://cferrante.dev` returns 200 with the security
+headers; `/api/demo` without a cookie returns 401; a POST without `x-amz-content-sha256` is
+refused.
+
+**By hand:** numbered click-through steps for request, approve, sign in, `/demo`, sign out, and a
+reused link, in a private window so no earlier session interferes.
+
+### 15.9 Configuration and secrets
+
+| Name | Kind | Holds |
+|---|---|---|
+| `/cferrante-dev/portal/database-url` | SSM SecureString | Neon pooled connection string |
+| `/cferrante-dev/portal/session-key` | SSM SecureString | 32-byte HMAC key for session cookies |
+| `/cferrante-dev/portal/notify-email` | SSM SecureString | My address for new-request emails; private, so never in the repo |
+| `SITE_ORIGIN`, `MAIL_FROM` (`no-reply@cferrante.dev`), limits | Lambda environment | Non-secret settings, per [§11](#11-configuration-and-secrets) |
+
+Read once per cold start through `orchestrator/secrets`. Postgres is reached with `pgx`, the
+standard Go driver (one new module); the older `lib/pq` is in maintenance mode.
+
+### 15.10 Cost
+
+| Item | Monthly | Status |
+|---|---|---|
+| S3, CloudFront flat-rate Free plan, ACM | $0 | To verify against AWS's pages |
+| Route 53 hosted zone | $0.50 | Already paid today |
+| Lambda | $0 | Always-free tier; to verify |
+| Neon free tier (0.5 GB, scale to zero) | $0 | To verify |
+| SES | About $0.10 per 1,000 emails | To verify; needs production access (🧑, about a day) |
+| SSM standard parameters | $0 | Same as the Groq key |
+
+Expected total: **about $0.50 a month**, plus the domain's yearly renewal.
+
+### 15.11 Decisions for review
+
+- **D2 (notification channel): SES.** The magic links need it anyway, so the concierge's tools
+  reuse it.
+- **D3 (migrations): a hand-rolled Go runner.** Numbered SQL files in `portal/migrations/`, each
+  in its own transaction, recorded in a `schema_migrations` table. About 60 lines, no dependency;
+  `goose` would add one for features this doesn't need yet.
+- **Cognito is dropped.** The magic-link session replaces it for the concierge's invitee features
+  too, so the site has one sign-in. [§6](#6-tools-and-authorization)'s `Authenticator` interface
+  gets a session-cookie implementation instead of a JWT one.
+- **[D6](#d6-what-an-approved-invitee-gets)** is the one decision still open.

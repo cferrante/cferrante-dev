@@ -286,6 +286,19 @@ what a caller may do.
 
 Signing in with a one-time code (OTP) sent by email instead of a password.
 
+### Magic link
+
+[Passwordless sign-in](#passwordless-sign-in) by a link instead of a code: the site emails a
+single-use link that expires in minutes, and opening it signs you in. Owning the inbox is the
+proof of identity. The link's secret is stored only as a hash, so a database leak gives no
+usable links.
+
+### User enumeration
+
+Learning whether an account exists from how a site answers, such as "no such user" versus
+"link sent". Sign-in and sign-up forms prevent it by giving the same reply, and taking about the
+same time, whatever the answer.
+
 ### OIDC
 
 **OpenID Connect.** A standard for one system to trust identity tokens issued by another. It lets,
@@ -310,6 +323,13 @@ at once, and each opening its own connections would overwhelm Postgres.
 ### Migrations
 
 Versioned, ordered SQL files that evolve the database schema, applied the same way everywhere.
+
+### Natural vs surrogate key
+
+A *natural key* is a real-world value used as a primary key, such as an email address. A
+*surrogate key* is a generated value with no meaning, such as an auto-numbered `id`. Use a
+surrogate key when the real value can change or is personal data, and protect the real value
+with a `UNIQUE` constraint instead: lookups stay as fast, and other tables never copy it.
 
 ### TTL
 
