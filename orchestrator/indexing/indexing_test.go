@@ -42,7 +42,8 @@ func TestDefaults(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := Settings{CorpusDirs: "orchestrator/corpus/testdata/corpus", IndexPath: "build/dev/corpus.idx", ChunkTarget: 1000,
-		Embedder: "ollama", OllamaURL: embed.OllamaBaseURL, OllamaModel: "nomic-embed-text", TitanModel: embed.TitanModel}
+		Embedder: "ollama", OllamaURL: embed.OllamaBaseURL, OllamaModel: "nomic-embed-text", TitanModel: embed.TitanModel,
+		EmbedCache: "evals/embeddings/titan-512.json"}
 	if s != want {
 		t.Errorf("defaults\n got %+v\nwant %+v", s, want)
 	}
@@ -51,6 +52,7 @@ func TestDefaults(t *testing.T) {
 var allEnv = map[string]string{
 	"CORPUS_DIRS": "a:b", "INDEX_PATH": "/i.idx", "CHUNK_TARGET": "500", "EMBEDDER": "titan",
 	"OLLAMA_BASE_URL": "http://gpu:11434", "EMBED_MODEL": "mxbai", "EMBED_DIM": "1024", "TITAN_MODEL": "amazon.titan-x",
+	"EMBED_CACHE": "/c.json",
 }
 
 func TestEnvironmentSetsEveryOption(t *testing.T) {
@@ -59,7 +61,7 @@ func TestEnvironmentSetsEveryOption(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := Settings{CorpusDirs: "a:b", IndexPath: "/i.idx", ChunkTarget: 500, Embedder: "titan",
-		OllamaURL: "http://gpu:11434", OllamaModel: "mxbai", Dim: 1024, TitanModel: "amazon.titan-x"}
+		OllamaURL: "http://gpu:11434", OllamaModel: "mxbai", Dim: 1024, TitanModel: "amazon.titan-x", EmbedCache: "/c.json"}
 	if s != want {
 		t.Errorf("settings\n got %+v\nwant %+v", s, want)
 	}
@@ -67,12 +69,12 @@ func TestEnvironmentSetsEveryOption(t *testing.T) {
 
 func TestFlagsOverrideTheEnvironment(t *testing.T) {
 	s, err := parse(t, []string{"-corpus", "c", "-index", "x.idx", "-target", "200", "-embedder", "hash", "-embed-dim", "64",
-		"-embed-model", "m", "-titan-model", "t", "-ollama", "http://o"}, allEnv)
+		"-embed-model", "m", "-titan-model", "t", "-ollama", "http://o", "-embed-cache", "k.json"}, allEnv)
 	if err != nil {
 		t.Fatal(err)
 	}
 	want := Settings{CorpusDirs: "c", IndexPath: "x.idx", ChunkTarget: 200, Embedder: "hash", OllamaURL: "http://o",
-		OllamaModel: "m", Dim: 64, TitanModel: "t"}
+		OllamaModel: "m", Dim: 64, TitanModel: "t", EmbedCache: "k.json"}
 	if s != want {
 		t.Errorf("settings\n got %+v\nwant %+v", s, want)
 	}
@@ -202,5 +204,26 @@ func TestANomicIndexIsRefusedUnderTitan(t *testing.T) {
 	}
 	if _, err := retrieval.Load(index, titan); err == nil || !strings.Contains(err.Error(), "rebuild the index") {
 		t.Errorf("err = %v, want a refusal asking to rebuild", err)
+	}
+}
+
+// The cache embedder reports the model that filled it, so an index built in
+// CI records Titan, and it never creates an AWS client.
+func TestTheCacheEmbedderReportsItsRecordedModel(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "c.json")
+	rec := embed.NewRecorder(embed.Hash{D: 4})
+	if _, err := rec.Embed(context.Background(), []string{"x"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := rec.Save(path); err != nil {
+		t.Fatal(err)
+	}
+	s, _ := parse(t, nil, map[string]string{"EMBEDDER": "cache", "EMBED_CACHE": path})
+	e, err := s.NewEmbedder(func() (embed.Invoker, error) { t.Error("created an AWS client"); return nil, nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e.Model() != "hash-v1-4" {
+		t.Errorf("model %q, want hash-v1-4", e.Model())
 	}
 }

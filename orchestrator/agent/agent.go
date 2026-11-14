@@ -197,23 +197,33 @@ func (a *Agent) Turn(ctx context.Context, caller auth.Caller, req TurnRequest, w
 		}
 		var calls []model.ToolCall
 		var text strings.Builder
+		var norm normaliser
+		// emit sends normalised answer text to the page, the citation
+		// parser and the stored conversation alike.
+		emit := func(s string) error {
+			if s == "" {
+				return nil
+			}
+			text.WriteString(s)
+			answer.WriteString(s)
+			if err := w.Token(s); err != nil {
+				return err
+			}
+			for _, n := range cites.feed(s) {
+				c := chunks[n-1]
+				if err := w.Citation(sse.Citation{N: n, ChunkID: c.ID, Title: c.Title, URL: c.URL}); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
 		started := a.Clock.Now()
 		res, err := a.Model.Stream(ctx, mreq, func(e model.Event) error {
 			switch e.Kind {
 			case model.Reasoning:
 				return w.Thought(e.Text, "model")
 			case model.Text:
-				text.WriteString(e.Text)
-				answer.WriteString(e.Text)
-				if err := w.Token(e.Text); err != nil {
-					return err
-				}
-				for _, n := range cites.feed(e.Text) {
-					c := chunks[n-1]
-					if err := w.Citation(sse.Citation{N: n, ChunkID: c.ID, Title: c.Title, URL: c.URL}); err != nil {
-						return err
-					}
-				}
+				return emit(norm.feed(e.Text))
 			case model.ToolCallEvent:
 				calls = append(calls, *e.ToolCall)
 			case model.Notice: // the router fell back (design D4)
@@ -225,6 +235,9 @@ func (a *Agent) Turn(ctx context.Context, caller auth.Caller, req TurnRequest, w
 			tl.inference += a.Clock.Now().Sub(started) // a stopped or slow model's time still counts
 			_ = w.StepEnd(stepID, "error", map[string]any{"error": err.Error()})
 			return a.fail(ctx, w, "model_unavailable", "the model couldn't answer right now")
+		}
+		if err := emit(norm.flush()); err != nil { // a character held at the very end
+			return err
 		}
 		status := "ok"
 		if res.Fallback {

@@ -52,8 +52,14 @@ func schemaRequest() model.Request {
 func TestSchemaRequestShape(t *testing.T) {
 	var got map[string]any
 	srv, _ := jsonServer(t, 200, completion(`{"score":4,"reasons":[]}`, "", "stop"), &got)
-	if _, err := client(srv.URL).Stream(context.Background(), schemaRequest(), func(model.Event) error { return nil }); err != nil {
+	req := schemaRequest()
+	zero := 0.0
+	req.Temperature = &zero
+	if _, err := client(srv.URL).Stream(context.Background(), req, func(model.Event) error { return nil }); err != nil {
 		t.Fatal(err)
+	}
+	if temp, ok := got["temperature"]; !ok || temp != float64(0) {
+		t.Errorf("temperature = %v (sent: %v), want 0", temp, ok)
 	}
 	if got["stream"] != false {
 		t.Errorf("stream = %v, want false", got["stream"])

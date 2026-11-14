@@ -108,3 +108,17 @@ func TestDuration(t *testing.T) {
 		t.Errorf("Err = %v, want an error naming BAD", err)
 	}
 }
+
+func TestFloat(t *testing.T) {
+	e := New(func(k string) string { return map[string]string{"MIN": "0.9", "BAD": "most"}[k] })
+	if got := e.Float("MIN", 0); got != 0.9 {
+		t.Errorf("MIN = %v, want 0.9", got)
+	}
+	if got := e.Float("UNSET", 0.5); got != 0.5 {
+		t.Errorf("UNSET = %v, want the default 0.5", got)
+	}
+	e.Float("BAD", 0)
+	if err := e.Err(); err == nil || !strings.Contains(err.Error(), `BAD="most"`) {
+		t.Errorf("err = %v, want one naming BAD", err)
+	}
+}

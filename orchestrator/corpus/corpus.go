@@ -64,7 +64,11 @@ func Parse(filename string, content []byte) (Document, error) {
 		if _, dup := fields[key]; dup {
 			return Document{}, fmt.Errorf("front matter key %q appears twice", key)
 		}
-		fields[key] = strings.TrimSpace(value)
+		value = strings.TrimSpace(value)
+		if len(value) >= 2 && (value[0] == '"' || value[0] == '\'') && value[len(value)-1] == value[0] {
+			return Document{}, fmt.Errorf("front matter %s is wrapped in quotes, which would be kept: this isn't YAML, so write the value without them", key)
+		}
+		fields[key] = value
 	}
 	for key := range allowedKeys {
 		if fields[key] == "" {

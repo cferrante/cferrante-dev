@@ -1,0 +1,2 @@
+{"time":"2026-11-10T19:58:22Z","commit":"6563d11ef23296ca999589a2e6d02adbf45c536e","dirty":true,"embedder":"bedrock/amazon.titan-embed-text-v2:0/512","k":5,"files":{"evals/golden/public.jsonl":{"hits":57,"scored":61}}}
+{"time":"2026-11-10T20:13:45Z","commit":"b09188486295c8d55e305a8f8f03e9ae99bbf050","dirty":true,"embedder":"bedrock/amazon.titan-embed-text-v2:0/512","k":5,"files":{"evals/golden/public.jsonl":{"hits":58,"scored":61}}}

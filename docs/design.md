@@ -176,6 +176,10 @@ that falls back fails rather than returning free text.
 **Matching model output.** gpt-oss writes Unicode hyphens (U+2011) where its source has `-`
 (20 of 20 answers in spike 1.5). Any exact comparison against model output, such as canary
 strings ([§10](#10-eval-file-formats)) or citations, normalises dashes first.
+The turn also normalises what visitors see, as it streams (found in 6.3b's runs): `【n】` becomes `[n]`
+(10 of 75 answers cited that way, and the citation parser missed them), U+202F becomes a comma
+between digits ("2 000" → "2,000", 63 of 75 answers) and a space elsewhere, and U+2011 becomes `-`.
+The page, the citation parser and the stored conversation all get the normalised text.
 
 **[Router with fallback](concepts.md#model-router-and-fallback).** `model.Router` wraps a primary
 and a fallback. It falls back **only if the primary fails before the first
@@ -397,12 +401,33 @@ finishes and reported via the `judge` event. Input: the answer and the retrieved
 {
   "verdict": "grounded | partially_grounded | ungrounded",
   "unsupported_claims": ["string"],
+  "answers_question": "yes | partly | no | not_applicable",
   "reasoning": "string (logged, not shown)"
 }
 ```
 
 - **[Grounded](concepts.md#groundedness)** means every factual claim is supported by a retrieved chunk. Small talk and
-  questions back to the visitor are not claims.
+  questions back to the visitor are not claims, so a polite decline is grounded.
+- Restating or interpreting the visitor's own problem ("It sounds like the slowdown is…") is not a
+  claim about the owner, and a fair summary of what several sources say together is supported.
+  A claim that goes beyond its source (a larger scope, a number, title or responsibility the
+  source doesn't state) is unsupported.
+- `unsupported_claims` is empty exactly when the verdict is `grounded`; anything else is refused
+  as an inconsistent verdict, as is a value outside the lists above.
+- `answers_question` compares the answer with an expected answer when one is given (the golden
+  set's `expected_answer`, step 6.3); without one (the live judge) it must be `not_applicable`.
+  `yes` means it covers the expected answer as written: details listed there are examples, not
+  a checklist. When the expected answer names steps ("reflects the problem, then relates it
+  to…"), each step must be there, and so must saying what the documents don't cover when the
+  expected answer asks for it; that way a corpus gap shows as a failure. The labelling screen
+  shows the same rule.
+- The judge runs at temperature 0, so the same answer gets the same verdict; without it, two
+  re-judges of one sample differed on at least 4 of 20 answers, and with 10 labels one flip
+  moves agreement by 10 points.
+- The judge (`orchestrator/judge`) sees the sources numbered as the answer turn numbered them, so
+  a citation `[2]` means the same chunk to both. It uses Groq's strict structured output (step
+  5.4) on `JUDGE_MODEL` (default `openai/gpt-oss-20b`), a smaller model than the one it grades.
+  A missing, malformed or inconsistent verdict is an error, never a pass.
 - **UI:** ✓ grounded, ⚠ partially grounded (lists claims), ✗ ungrounded (warning banner). v1 never
   silently retracts an answer; it labels it.
 - Answers for suggested questions are judged at build time and must be `grounded` to ship.
@@ -502,6 +527,84 @@ Both are JSON Lines (one JSON object per line), readable with Go's standard libr
  "expected_answer":"Mentions this Context Concierge's Go orchestrator ...",
  "tags":["projects","go"]}
 ```
+
+Invitee questions, whose `expected_answer` holds private facts, live in the private repo's
+`golden/` folder (cloned into `corpus/private/golden/`), which the indexer never reads. A question
+with no `expected_chunks` is one the answer should decline; hit@k skips it and 6.3 scores the
+answer. `make hitk` (`evals/cmd/hitk`) indexes `CORPUS_DIRS`, searches each question with its
+caller's access mask and prints ✓/✗ per question and hit@5. An expected chunk the index lacks,
+or one the caller may not see, stops the run: it's a typo or a broken question, not a miss.
+
+**The hit@k gate (step 6.2).** CI has no Ollama, no AWS credentials and no private repo, so it
+scores `evals/golden/public.jsonl` over `corpus/public/` from a committed **embedding cache**,
+`evals/embeddings/titan-512.json`: `{"model": …, "dim": 512, "vectors": {"<SHA-256 of the
+text>": "<base64 of little-endian float32s>"}}`. That is the production embedder ([D1](#d1-embedding-model))
+without a network call or a secret, and the same vectors on every run.
+
+- `make embed-cache` (after `aws sso login`) runs `hitk` with Titan and `-write-cache`, saving
+  every vector the run asked for: chunks and questions alike. It refuses an invitee chunk, an
+  invitee question, or a folder or file under `corpus/private`, because a vector of private
+  text can be partly turned back into the text.
+- `-embedder cache` answers only from the file and reports the cached model's name, so the index
+  records Titan. A text the file lacks stops the run, naming its start and "run make
+  embed-cache": an edited document is never scored against stale vectors. A vector whose length
+  isn't `dim` is refused when the file loads.
+- `make hitk-gate` (CI) fails when hit@5 over the scored questions is below `HITK_MIN`, a
+  fraction set from the first Titan run. Lowering it needs a row in the plan's deviations log.
+- `make hitk` still scores the held-out and invitee sets locally, and appends one line per run
+  to the committed `evals/results/hitk.jsonl`: time, commit (and whether the tree was dirty),
+  embedder, k, and hits and scored questions per file. CI passes `-results ""` and writes none.
+
+**Answer evals (step 6.3b).** `make answers` (`evals/cmd/answers`) runs each golden question
+through the real turn (`Agent.Turn`: the same prompt, owner settings, tools and retriever as
+`make dev`) as its caller, on Groq gpt-oss-120b with no fallback, so every answer is the model
+being measured. The [judge](#7-judge) then grades it against the chunks that turn retrieved, in
+the order the turn numbered them, and against `expected_answer`. A question **passes** when the
+verdict is `grounded`, `answers_question` is `yes`, and, unless it is a decline question (no
+`expected_chunks`), the answer cites at least one source as `[n]`: checked in code, not by the
+judge. A decline question passes only if the answer declines, which its `expected_answer`
+describes. A
+turn that ends in an error, or a verdict the judge can't give, counts as an error, not a pass.
+
+- `evals/results/answers.jsonl` (committed) gets one line per run: time, commit, the answer
+  and judge models, embedder, the prompt hash, and per golden file the count of questions,
+  passes, verdicts, `answers_question` values and errors. **No question or answer text**:
+  invitee and held-out answers hold private facts.
+- `build/evals/answers.jsonl` (git-ignored) holds each answer's text, retrieved chunk ids,
+  verdict, unsupported claims and the judge's reasoning, for reading and for 6.3c's labels.
+- It never runs in CI (it needs models and the private corpus) and has no threshold until
+  6.3c shows the judge can be trusted.
+
+**Judge agreement (step 6.3c).** `make label` (`evals/cmd/label`) checks the judge against you
+before its scores are trusted:
+
+- The first run takes a **sample** from the latest `build/evals/answers.jsonl`: 10 answers the
+  judge passed and 10 it didn't (fewer if a run has fewer), chosen by a fixed seed, so it
+  measures both kinds of mistake. The sample, with each answer and the text of its retrieved
+  chunks, goes to `corpus/private/labels/sample.jsonl` in the private repo: held-out and invitee
+  answers hold private facts, and a later fix to the judge's prompt is re-checked on the same
+  answers.
+- It then shows each answer **blind**: the question, the expected answer, the sources and the
+  answer, never the judge's verdict, since seeing it biases the label. You give a verdict
+  (`g`/`p`/`u`), whether it answers the question (`y`/`p`/`n`) and an optional note; each label
+  is saved as you go to `corpus/private/labels/labels.jsonl`, so labelling can stop and resume.
+- `make label LABEL_FLAGS=-report` compares: verdict agreement, `answers_question` agreement and
+  pass/fail agreement, each as a fraction, with every disagreement listed. **The judge is
+  trusted when verdict and `answers_question` agreement are both at least 80%**; otherwise its
+  prompt is fixed, re-judged on the same sample (`-rejudge`, a diagnostic: those labels shaped
+  the fix) and then checked on a **fresh** sample (`-name fresh`: 5 + 5 answers from a new run,
+  none of them questions already sampled), labelled blind. The 80% bar applies to the fresh
+  sample. A further round takes another name (`-name fresh2`) from the same run, and its report
+  re-judges with today's judge (`-report -rejudge -name fresh2`). Trusted 2026-11-12 on fresh2:
+  verdict 10/10, `answers_question` 8/10 and 9/10 over two re-judges.
+- `make answers` takes a minimum pass rate (`-min`, `ANSWERS_MIN`) over one golden file
+  (`-min-file`, the public set by default; held-out and invitee are too small to gate on). The
+  results line is written first, so a failing run stays on record; a gate over a file with no
+  questions in the run is refused. It can't run in CI (it needs the Groq key, takes about 20
+  minutes and a day's judge quota), so it is run by hand before merging a change to the prompt,
+  corpus, model or retrieval.
+- A label file with an unknown value, a duplicate, or an id not in the sample is refused, and
+  the report refuses a sample that isn't fully labelled.
 
 **Adversarial** ([red-team](concepts.md#red-teaming) cases, `evals/adversarial/*.jsonl`):
 
@@ -694,7 +797,7 @@ Plan Phase 4 builds it.
   `{assistant}`, is at most 2,000 characters, and holds no facts about the owner (those go in
   the corpus, where the judge can see them). Names and pronouns are one line of at most 40
   characters without braces. Any violation stops startup. The server logs
-  `prompt sha256=<12 hex digits>` of the full system prompt, which 6.2 stores with each eval
+  `prompt sha256=<12 hex digits>` of the full system prompt, which 6.3 stores with each answer eval
   run, since a style file changes behaviour without changing code.
 - **Welcome (step 6.0a):** the answer area shows the `welcome` wording until the first
   question or confirmation, then the answer replaces it like any other (the page shows one turn

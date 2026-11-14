@@ -7,7 +7,7 @@ GO_PKGS := $(shell go list ./... 2>/dev/null)
 SH_FILES := $(shell find . -name '*.sh' -not -path './.git/*')
 SHELLCHECK ?= shellcheck
 
-.PHONY: help tools css site css-check jstest test corpus-check engine-test bench-engine bench-engine-scale bench-go dev smoke-groq smoke-groq-schema measure-groq-cache smoke-bedrock smoke-titan lint fmt docs-check
+.PHONY: help tools css site css-check jstest test corpus-check engine-test bench-engine bench-engine-scale bench-go dev smoke-groq smoke-groq-schema measure-groq-cache smoke-bedrock smoke-titan lint fmt docs-check hitk embed-cache hitk-gate smoke-judge answers label
 
 ENGINE_BUILD := build/engine
 ENGINE_RELEASE := build/engine-release
@@ -39,6 +39,20 @@ endif
 	infra/bootstrap/aws/secret_test.sh
 	scripts/fetch-tools_test.sh
 	scripts/check-css_test.sh
+
+hitk: ## Golden set retrieval check: hit@5 per question over CORPUS_DIRS (EMBEDDER from .env)
+	go run ./evals/cmd/hitk $(HITK_FLAGS)
+
+# The gate's threshold: a fraction of the public questions, set from the first
+# Titan run (plan step 6.2). Lowering it needs a row in the plan's deviations log.
+HITK_MIN ?= 0.95 # 58/61 with Titan, 2026-11-10: any new miss fails
+EMBED_CACHE_FILE := evals/embeddings/titan-512.json
+
+embed-cache: ## Embed the public corpus and questions with Titan into the committed cache (needs aws sso login; costs about two hundredths of a cent)
+	go run ./evals/cmd/hitk -embedder titan -embed-dim 512 -corpus corpus/public -golden evals/golden/public.jsonl -write-cache $(EMBED_CACHE_FILE)
+
+hitk-gate: ## CI gate: hit@5 over the public set from the cache; fails below HITK_MIN
+	go run ./evals/cmd/hitk -embedder cache -embed-cache $(EMBED_CACHE_FILE) -corpus corpus/public -golden evals/golden/public.jsonl -min $(HITK_MIN) -results ""
 
 corpus-check: ## Fail if a tracked file would publish invitee-only documents
 	go run ./orchestrator/cmd/corpuscheck
@@ -81,6 +95,15 @@ smoke-bedrock: ## Call the real Bedrock API once (needs aws sso login; about $0.
 
 smoke-titan: ## Embed three texts with the real Titan v2 (needs aws sso login; far below $0.0001)
 	LIVE_TITAN=1 go test -count=1 -run TestLiveTitan -v ./orchestrator/embed/
+
+smoke-judge: ## Run the judge on Groq: a known-bad answer must not be grounded (needs aws sso login; free tier)
+	LIVE_GROQ=1 go test -count=1 -run TestLiveJudge -v ./orchestrator/judge/
+
+answers: ## Answer evals: each golden question through the real turn on Groq, judged (needs aws sso login; free tier)
+	go run ./evals/cmd/answers $(ANSWERS_FLAGS)
+
+label: ## Label a sample of answers blind, to check the judge (resumable; LABEL_FLAGS=-report for the agreement)
+	go run ./evals/cmd/label $(LABEL_FLAGS)
 
 lint: tools ## Check formatting, run go vet, shellcheck and deno lint
 	@unformatted=$$(gofmt -l .); \

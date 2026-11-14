@@ -231,3 +231,19 @@ func TestReadmesAreNotDocuments(t *testing.T) {
 		t.Errorf("chunks = %+v, want only about#me", got)
 	}
 }
+
+// Front matter is plain key: value, not YAML, so quotes would be kept and
+// shown to visitors in every citation of the document.
+func TestParseRejectsQuotedValues(t *testing.T) {
+	for _, title := range []string{`"Senior Programmer, Vartec Telecom"`, `'Senior Programmer'`} {
+		_, err := Parse("x.md", []byte("---\ntitle: "+title+"\nurl: /u\naccess: public\n---\nBody\n"))
+		if err == nil || !strings.Contains(err.Error(), "title") || !strings.Contains(err.Error(), "quotes") {
+			t.Errorf("title %s: err = %v, want one naming title and its quotes", title, err)
+		}
+	}
+	// Quotes inside a value are text, as in an apostrophe or a quoted word.
+	d, err := Parse("x.md", []byte("---\ntitle: Colleen's \"best\" work\nurl: /u\naccess: public\n---\nBody\n"))
+	if err != nil || d.Title != `Colleen's "best" work` {
+		t.Errorf("inner quotes: title %q, err %v", d.Title, err)
+	}
+}
