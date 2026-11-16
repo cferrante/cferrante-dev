@@ -17,11 +17,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cferrante/cferrante-dev/orchestrator/agent"
-	"github.com/cferrante/cferrante-dev/orchestrator/auth"
-	"github.com/cferrante/cferrante-dev/orchestrator/clock"
-	"github.com/cferrante/cferrante-dev/orchestrator/judge"
-	"github.com/cferrante/cferrante-dev/orchestrator/sse"
+	"github.com/cferrante/context-concierge/orchestrator/agent"
+	"github.com/cferrante/context-concierge/orchestrator/auth"
+	"github.com/cferrante/context-concierge/orchestrator/clock"
+	"github.com/cferrante/context-concierge/orchestrator/judge"
+	"github.com/cferrante/context-concierge/orchestrator/sse"
 )
 
 // Turner runs one answer turn; *agent.Agent satisfies it.

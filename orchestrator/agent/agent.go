@@ -13,12 +13,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cferrante/cferrante-dev/orchestrator/auth"
-	"github.com/cferrante/cferrante-dev/orchestrator/clock"
-	"github.com/cferrante/cferrante-dev/orchestrator/model"
-	"github.com/cferrante/cferrante-dev/orchestrator/sse"
-	"github.com/cferrante/cferrante-dev/orchestrator/tools"
-	"github.com/cferrante/cferrante-dev/orchestrator/wording"
+	"github.com/cferrante/context-concierge/orchestrator/auth"
+	"github.com/cferrante/context-concierge/orchestrator/clock"
+	"github.com/cferrante/context-concierge/orchestrator/model"
+	"github.com/cferrante/context-concierge/orchestrator/sse"
+	"github.com/cferrante/context-concierge/orchestrator/tools"
+	"github.com/cferrante/context-concierge/orchestrator/wording"
 )
 
 // TurnDeadline bounds a whole turn (design §3).

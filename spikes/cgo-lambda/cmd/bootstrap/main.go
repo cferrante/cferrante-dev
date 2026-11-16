@@ -14,7 +14,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/cferrante/cferrante-dev/spikes/cgo-lambda/engine"
+	"github.com/cferrante/context-concierge/spikes/cgo-lambda/engine"
 )
 
 type event struct {

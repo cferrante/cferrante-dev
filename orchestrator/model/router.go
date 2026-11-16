@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cferrante/cferrante-dev/orchestrator/clock"
+	"github.com/cferrante/context-concierge/orchestrator/clock"
 )
 
 // FirstTokenTimeout is how long the primary may stay silent before the

@@ -6,9 +6,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/cferrante/cferrante-dev/orchestrator/agent"
-	"github.com/cferrante/cferrante-dev/orchestrator/auth"
-	"github.com/cferrante/cferrante-dev/orchestrator/clock"
+	"github.com/cferrante/context-concierge/orchestrator/agent"
+	"github.com/cferrante/context-concierge/orchestrator/auth"
+	"github.com/cferrante/context-concierge/orchestrator/clock"
 )
 
 type twoSuggestions struct{}

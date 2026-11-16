@@ -17,7 +17,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/cferrante/cferrante-dev/spikes/groq-lambda/roundtrip"
+	"github.com/cferrante/context-concierge/spikes/groq-lambda/roundtrip"
 )
 
 // percentile returns the nearest-rank p-th percentile (0 < p ≤ 1) of xs

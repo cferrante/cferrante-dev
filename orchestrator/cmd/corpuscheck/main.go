@@ -24,7 +24,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/cferrante/cferrante-dev/orchestrator/corpus"
+	"github.com/cferrante/context-concierge/orchestrator/corpus"
 )
 
 func main() {

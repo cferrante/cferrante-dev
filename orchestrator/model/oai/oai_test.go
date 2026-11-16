@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cferrante/cferrante-dev/orchestrator/model"
+	"github.com/cferrante/context-concierge/orchestrator/model"
 )
 
 // replay serves a recorded SSE stream, one event per write, flushing after

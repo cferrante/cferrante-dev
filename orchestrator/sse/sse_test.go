@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cferrante/cferrante-dev/orchestrator/clock"
+	"github.com/cferrante/context-concierge/orchestrator/clock"
 )
 
 // syncBuf is a goroutine-safe buffer: the keep-alive writes from its own goroutine.

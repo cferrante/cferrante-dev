@@ -13,9 +13,9 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
 
-	"github.com/cferrante/cferrante-dev/spikes/groq-lambda/groq"
-	"github.com/cferrante/cferrante-dev/spikes/groq-lambda/roundtrip"
-	"github.com/cferrante/cferrante-dev/spikes/groq-lambda/ssmkey"
+	"github.com/cferrante/context-concierge/spikes/groq-lambda/groq"
+	"github.com/cferrante/context-concierge/spikes/groq-lambda/roundtrip"
+	"github.com/cferrante/context-concierge/spikes/groq-lambda/ssmkey"
 )
 
 var (

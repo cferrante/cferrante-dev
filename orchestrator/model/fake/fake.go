@@ -5,7 +5,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/cferrante/cferrante-dev/orchestrator/model"
+	"github.com/cferrante/context-concierge/orchestrator/model"
 )
 
 // Model replays a script. Safe for concurrent use.

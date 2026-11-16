@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cferrante/cferrante-dev/orchestrator/model"
+	"github.com/cferrante/context-concierge/orchestrator/model"
 )
 
 // fakeModel returns reply as one Text event and keeps the request.

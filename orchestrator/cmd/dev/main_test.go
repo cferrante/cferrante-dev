@@ -17,13 +17,13 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime"
-	cfg "github.com/cferrante/cferrante-dev/orchestrator/config"
-	"github.com/cferrante/cferrante-dev/orchestrator/embed"
-	"github.com/cferrante/cferrante-dev/orchestrator/indexing"
-	"github.com/cferrante/cferrante-dev/orchestrator/model"
-	"github.com/cferrante/cferrante-dev/orchestrator/model/bedrock"
-	"github.com/cferrante/cferrante-dev/orchestrator/model/fake"
-	"github.com/cferrante/cferrante-dev/orchestrator/model/oai"
+	cfg "github.com/cferrante/context-concierge/orchestrator/config"
+	"github.com/cferrante/context-concierge/orchestrator/embed"
+	"github.com/cferrante/context-concierge/orchestrator/indexing"
+	"github.com/cferrante/context-concierge/orchestrator/model"
+	"github.com/cferrante/context-concierge/orchestrator/model/bedrock"
+	"github.com/cferrante/context-concierge/orchestrator/model/fake"
+	"github.com/cferrante/context-concierge/orchestrator/model/oai"
 )
 
 func noEnv(string) string { return "" }

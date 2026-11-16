@@ -12,10 +12,10 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/cferrante/cferrante-dev/orchestrator/config"
-	"github.com/cferrante/cferrante-dev/orchestrator/corpus"
-	"github.com/cferrante/cferrante-dev/orchestrator/embed"
-	"github.com/cferrante/cferrante-dev/orchestrator/retrieval"
+	"github.com/cferrante/context-concierge/orchestrator/config"
+	"github.com/cferrante/context-concierge/orchestrator/corpus"
+	"github.com/cferrante/context-concierge/orchestrator/embed"
+	"github.com/cferrante/context-concierge/orchestrator/retrieval"
 )
 
 // Settings is comparable, so a command's whole config can be compared in tests.

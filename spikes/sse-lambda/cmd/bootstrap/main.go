@@ -11,7 +11,7 @@ import (
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
 
-	"github.com/cferrante/cferrante-dev/spikes/sse-lambda/sse"
+	"github.com/cferrante/context-concierge/spikes/sse-lambda/sse"
 )
 
 // Variables so the test can make the stream short and fast.

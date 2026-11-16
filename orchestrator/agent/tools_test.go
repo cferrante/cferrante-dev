@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cferrante/cferrante-dev/orchestrator/auth"
-	"github.com/cferrante/cferrante-dev/orchestrator/model"
-	"github.com/cferrante/cferrante-dev/orchestrator/model/fake"
-	"github.com/cferrante/cferrante-dev/orchestrator/tools"
+	"github.com/cferrante/context-concierge/orchestrator/auth"
+	"github.com/cferrante/context-concierge/orchestrator/model"
+	"github.com/cferrante/context-concierge/orchestrator/model/fake"
+	"github.com/cferrante/context-concierge/orchestrator/tools"
 )
 
 var (

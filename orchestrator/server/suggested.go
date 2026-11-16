@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/cferrante/cferrante-dev/orchestrator/agent"
-	"github.com/cferrante/cferrante-dev/orchestrator/auth"
+	"github.com/cferrante/context-concierge/orchestrator/agent"
+	"github.com/cferrante/context-concierge/orchestrator/auth"
 )
 
 // SuggestedList handles GET /suggested: the questions this caller may see,

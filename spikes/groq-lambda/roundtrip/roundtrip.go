@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cferrante/cferrante-dev/spikes/groq-lambda/groq"
+	"github.com/cferrante/context-concierge/spikes/groq-lambda/groq"
 )
 
 // Codename is returned only by the tool; an answer that repeats it proves

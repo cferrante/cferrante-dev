@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cferrante/cferrante-dev/orchestrator/model"
+	"github.com/cferrante/context-concierge/orchestrator/model"
 )
 
 const verdictSchema = `{"type":"object","properties":{"score":{"type":"integer"},"reasons":{"type":"array","items":{"type":"object",

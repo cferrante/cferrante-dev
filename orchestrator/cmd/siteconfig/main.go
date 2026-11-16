@@ -17,8 +17,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	cfg "github.com/cferrante/cferrante-dev/orchestrator/config"
-	"github.com/cferrante/cferrante-dev/orchestrator/wording"
+	cfg "github.com/cferrante/context-concierge/orchestrator/config"
+	"github.com/cferrante/context-concierge/orchestrator/wording"
 )
 
 type siteConfig struct {

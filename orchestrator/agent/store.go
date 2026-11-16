@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/cferrante/cferrante-dev/orchestrator/model"
+	"github.com/cferrante/context-concierge/orchestrator/model"
 )
 
 // HistoryMessages is how many earlier messages go into the prompt.

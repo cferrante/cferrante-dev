@@ -14,8 +14,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/cferrante/cferrante-dev/orchestrator/agent"
-	"github.com/cferrante/cferrante-dev/orchestrator/auth"
+	"github.com/cferrante/context-concierge/orchestrator/agent"
+	"github.com/cferrante/context-concierge/orchestrator/auth"
 )
 
 // Item is one golden question (design §10).

@@ -1,4 +1,4 @@
-# cferrante-dev — Context Concierge (agentic RAG)
+# Context Concierge (agentic RAG)
 
 > **Status: built and evaluated locally; not deployed yet.** Phases 0–6.3 of the
 > [plan](docs/plan.md) are done: AWS risk spikes, the C++ retrieval engine, the Go orchestrator,

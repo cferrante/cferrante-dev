@@ -8,7 +8,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/cferrante/cferrante-dev/orchestrator/model"
+	"github.com/cferrante/context-concierge/orchestrator/model"
 )
 
 // ErrInvalidOutput is a structured-output reply that isn't a complete JSON

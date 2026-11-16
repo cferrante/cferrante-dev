@@ -1,4 +1,4 @@
-# cferrante-dev: working agreement for Claude Code
+# context-concierge: working agreement for Claude Code
 
 This project is built with [Claude Code](https://claude.com/claude-code) using spec-driven,
 test-driven development. This file tells each session how the project is run, and doubles as a
