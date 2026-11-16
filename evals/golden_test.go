@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cferrante/cferrante-dev/orchestrator/indexing"
-	"github.com/cferrante/cferrante-dev/orchestrator/retrieval"
+	"github.com/cferrante/context-concierge/orchestrator/indexing"
+	"github.com/cferrante/context-concierge/orchestrator/retrieval"
 )
 
 func read(m map[string]string) func(string) ([]byte, error) {

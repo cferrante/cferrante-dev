@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cferrante/cferrante-dev/orchestrator/model"
+	"github.com/cferrante/context-concierge/orchestrator/model"
 )
 
 // textModel answers every request with the same text.

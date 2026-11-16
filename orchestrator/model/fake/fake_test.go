@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/cferrante/cferrante-dev/orchestrator/model"
+	"github.com/cferrante/context-concierge/orchestrator/model"
 )
 
 func TestTurnsScriptSuccessiveCalls(t *testing.T) {

@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cferrante/cferrante-dev/orchestrator/clock"
-	"github.com/cferrante/cferrante-dev/orchestrator/model"
-	"github.com/cferrante/cferrante-dev/orchestrator/model/fake"
+	"github.com/cferrante/context-concierge/orchestrator/clock"
+	"github.com/cferrante/context-concierge/orchestrator/model"
+	"github.com/cferrante/context-concierge/orchestrator/model/fake"
 )
 
 func text(s string) model.Event { return model.Event{Kind: model.Text, Text: s} }

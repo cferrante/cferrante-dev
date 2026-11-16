@@ -25,12 +25,12 @@ import (
 
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime"
-	"github.com/cferrante/cferrante-dev/evals"
-	cfg "github.com/cferrante/cferrante-dev/orchestrator/config"
-	"github.com/cferrante/cferrante-dev/orchestrator/corpus"
-	"github.com/cferrante/cferrante-dev/orchestrator/embed"
-	"github.com/cferrante/cferrante-dev/orchestrator/indexing"
-	"github.com/cferrante/cferrante-dev/orchestrator/retrieval"
+	"github.com/cferrante/context-concierge/evals"
+	cfg "github.com/cferrante/context-concierge/orchestrator/config"
+	"github.com/cferrante/context-concierge/orchestrator/corpus"
+	"github.com/cferrante/context-concierge/orchestrator/embed"
+	"github.com/cferrante/context-concierge/orchestrator/indexing"
+	"github.com/cferrante/context-concierge/orchestrator/retrieval"
 )
 
 func main() {

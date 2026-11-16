@@ -10,8 +10,8 @@ import (
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime"
-	"github.com/cferrante/cferrante-dev/orchestrator/embed"
-	"github.com/cferrante/cferrante-dev/orchestrator/retrieval"
+	"github.com/cferrante/context-concierge/orchestrator/embed"
+	"github.com/cferrante/context-concierge/orchestrator/retrieval"
 )
 
 func envOf(m map[string]string) func(string) string { return func(k string) string { return m[k] } }

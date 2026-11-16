@@ -3,7 +3,7 @@ package bedrock
 import (
 	"testing"
 
-	"github.com/cferrante/cferrante-dev/orchestrator/model"
+	"github.com/cferrante/context-concierge/orchestrator/model"
 )
 
 // split runs chunks through a splitter and joins adjacent pieces of a kind.

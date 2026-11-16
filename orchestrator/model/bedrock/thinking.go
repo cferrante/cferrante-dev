@@ -3,7 +3,7 @@ package bedrock
 import (
 	"strings"
 
-	"github.com/cferrante/cferrante-dev/orchestrator/model"
+	"github.com/cferrante/context-concierge/orchestrator/model"
 )
 
 // piece is a run of streamed text that is either reasoning or answer.

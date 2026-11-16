@@ -17,7 +17,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cferrante/cferrante-dev/orchestrator/model"
+	"github.com/cferrante/context-concierge/orchestrator/model"
 )
 
 // Base URLs of the two providers it serves.

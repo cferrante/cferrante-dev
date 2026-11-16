@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cferrante/cferrante-dev/evals"
-	"github.com/cferrante/cferrante-dev/orchestrator/judge"
+	"github.com/cferrante/context-concierge/evals"
+	"github.com/cferrante/context-concierge/orchestrator/judge"
 )
 
 // detailFile writes a run's detail with two judged answers over the fixture

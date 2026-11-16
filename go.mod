@@ -1,4 +1,4 @@
-module github.com/cferrante/cferrante-dev
+module github.com/cferrante/context-concierge
 
 go 1.27.1
 

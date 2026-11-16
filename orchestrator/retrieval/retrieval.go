@@ -11,11 +11,11 @@ import (
 	"os"
 	"path/filepath"
 
-	rag "github.com/cferrante/cferrante-dev/engine/go"
-	"github.com/cferrante/cferrante-dev/orchestrator/agent"
-	"github.com/cferrante/cferrante-dev/orchestrator/auth"
-	"github.com/cferrante/cferrante-dev/orchestrator/corpus"
-	"github.com/cferrante/cferrante-dev/orchestrator/embed"
+	rag "github.com/cferrante/context-concierge/engine/go"
+	"github.com/cferrante/context-concierge/orchestrator/agent"
+	"github.com/cferrante/context-concierge/orchestrator/auth"
+	"github.com/cferrante/context-concierge/orchestrator/corpus"
+	"github.com/cferrante/context-concierge/orchestrator/embed"
 )
 
 // SidecarVersion is the sidecar format version.

@@ -15,8 +15,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/cferrante/cferrante-dev/orchestrator/auth"
-	"github.com/cferrante/cferrante-dev/orchestrator/model"
+	"github.com/cferrante/context-concierge/orchestrator/auth"
+	"github.com/cferrante/context-concierge/orchestrator/model"
 )
 
 // Def is one tool.

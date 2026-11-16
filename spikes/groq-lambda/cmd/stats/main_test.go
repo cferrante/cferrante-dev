@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cferrante/cferrante-dev/spikes/groq-lambda/roundtrip"
+	"github.com/cferrante/context-concierge/spikes/groq-lambda/roundtrip"
 )
 
 func TestPercentileNearestRank(t *testing.T) {

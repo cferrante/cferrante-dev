@@ -9,8 +9,8 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
 
-	"github.com/cferrante/cferrante-dev/orchestrator/model/oai"
-	"github.com/cferrante/cferrante-dev/orchestrator/secrets"
+	"github.com/cferrante/context-concierge/orchestrator/model/oai"
+	"github.com/cferrante/context-concierge/orchestrator/secrets"
 )
 
 func envOr(k, def string) string {

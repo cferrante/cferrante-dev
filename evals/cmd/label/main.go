@@ -26,12 +26,12 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
 
-	"github.com/cferrante/cferrante-dev/evals"
-	cfg "github.com/cferrante/cferrante-dev/orchestrator/config"
-	"github.com/cferrante/cferrante-dev/orchestrator/corpus"
-	"github.com/cferrante/cferrante-dev/orchestrator/judge"
-	"github.com/cferrante/cferrante-dev/orchestrator/model/oai"
-	"github.com/cferrante/cferrante-dev/orchestrator/secrets"
+	"github.com/cferrante/context-concierge/evals"
+	cfg "github.com/cferrante/context-concierge/orchestrator/config"
+	"github.com/cferrante/context-concierge/orchestrator/corpus"
+	"github.com/cferrante/context-concierge/orchestrator/judge"
+	"github.com/cferrante/context-concierge/orchestrator/model/oai"
+	"github.com/cferrante/context-concierge/orchestrator/secrets"
 )
 
 // sampled is one answer as stored in the sample: the run's row plus the

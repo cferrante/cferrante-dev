@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cferrante/cferrante-dev/orchestrator/auth"
+	"github.com/cferrante/context-concierge/orchestrator/auth"
 )
 
 var (

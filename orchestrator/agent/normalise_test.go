@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cferrante/cferrante-dev/orchestrator/auth"
-	"github.com/cferrante/cferrante-dev/orchestrator/model/fake"
+	"github.com/cferrante/context-concierge/orchestrator/auth"
+	"github.com/cferrante/context-concierge/orchestrator/model/fake"
 )
 
 // stream feeds parts one at a time and returns what would reach the page.

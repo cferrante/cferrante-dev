@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cferrante/cferrante-dev/orchestrator/clock"
+	"github.com/cferrante/context-concierge/orchestrator/clock"
 )
 
 // ErrClosed is returned by every write after done or error has been sent.

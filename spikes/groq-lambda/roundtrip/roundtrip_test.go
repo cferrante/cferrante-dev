@@ -12,7 +12,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/cferrante/cferrante-dev/spikes/groq-lambda/groq"
+	"github.com/cferrante/context-concierge/spikes/groq-lambda/groq"
 )
 
 type wireMsg struct {

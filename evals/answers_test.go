@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cferrante/cferrante-dev/orchestrator/agent"
-	"github.com/cferrante/cferrante-dev/orchestrator/auth"
-	"github.com/cferrante/cferrante-dev/orchestrator/judge"
-	"github.com/cferrante/cferrante-dev/orchestrator/sse"
+	"github.com/cferrante/context-concierge/orchestrator/agent"
+	"github.com/cferrante/context-concierge/orchestrator/auth"
+	"github.com/cferrante/context-concierge/orchestrator/judge"
+	"github.com/cferrante/context-concierge/orchestrator/sse"
 )
 
 // fakeTurn retrieves through r, as the real turn does, then streams reply

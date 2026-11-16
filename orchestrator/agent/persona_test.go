@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cferrante/cferrante-dev/orchestrator/auth"
-	"github.com/cferrante/cferrante-dev/orchestrator/model/fake"
+	"github.com/cferrante/context-concierge/orchestrator/auth"
+	"github.com/cferrante/context-concierge/orchestrator/model/fake"
 )
 
 // Step 6.0b: the fixed rules name the owner and use their pronouns; an
