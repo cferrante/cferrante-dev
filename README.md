@@ -1,6 +1,9 @@
 # Context Concierge (agentic RAG)
 
-> **Status: built and evaluated locally; not deployed yet.** Phases 0–6.3 of the
+> **Status: paused (2026-11-16) while the portfolio site at `cferrante.dev` goes live; it will
+> run there as a feature ([design §15](docs/design.md#15-running-as-a-feature-of-cferrantedev)).**
+>
+> **Built and evaluated locally; not deployed yet.** Phases 0–6.3 of the
 > [plan](docs/plan.md) are done: AWS risk spikes, the C++ retrieval engine, the Go orchestrator,
 > the split-pane UI, real models (Groq with a Bedrock fallback, Titan embeddings), a golden
 > question set with a retrieval gate in CI, and an answer judge checked against hand labels.

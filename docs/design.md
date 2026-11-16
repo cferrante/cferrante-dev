@@ -19,7 +19,7 @@ booking (v1 *records* meeting requests, see [§6](#6-tools-and-authorization)); 
 
 | Component | Owns | Talks to |
 |---|---|---|
-| `web/` | UI, SSE client, Cognito sign-in | orchestrator (SSE over HTTPS), Cognito |
+| `web/` | UI, SSE client; sign-in via the site ([§15](#15-running-as-a-feature-of-cferrantedev)) | orchestrator (SSE over HTTPS) |
 | `orchestrator/` (Go) | [agent loop](concepts.md#agent-loop), authorization, timing, [SSE](concepts.md#sse), tool execution, logging | engine ([cgo](concepts.md#cgo)), model providers, DynamoDB, Postgres |
 | `engine/` (C++) | index loading, hybrid search, access filtering | nothing (pure in-process compute) |
 | `evals/` (Go) | golden + adversarial runs, scoring | orchestrator packages, Ollama/Groq, Postgres |
@@ -354,8 +354,10 @@ Two layers of [authorization](concepts.md#authentication-vs-authorization)
 2. **Enforcement:** the executor re-checks the caller's [Cognito groups](concepts.md#cognito-groups) before running any tool.
    A forged or hallucinated tool call from an anonymous caller fails with `authorized: false`.
 
-**Who the caller is:** a `Caller{ID, Groups}` comes from an `Authenticator` interface. Cognito
-JWTs implement it in Phase 8; until then tests and `make dev` use a fixed caller chosen by a flag.
+**Who the caller is:** a `Caller{ID, Groups}` comes from an `Authenticator` interface. A session
+cookie set by the site's sign-in hand-off implements it ([§15](#15-running-as-a-feature-of-cferrantedev));
+until then tests and `make dev` use a fixed caller chosen by a flag. (Cognito JWTs were the
+earlier plan.)
 
 Side-effecting tools require
 **[explicit confirmation](concepts.md#human-in-the-loop-confirmation)**: the agent proposes the action, the UI
@@ -812,3 +814,134 @@ Plan Phase 4 builds it.
   stack on narrow screens.
 - **Tests:** `deno test` with no permissions ([deny-by-default](concepts.md#deny-by-default-permissions)),
   run by `make test` and CI.
+
+## 15. Running as a feature of cferrante.dev
+
+> **Status: proposed 2026-11-16, for review.** The concierge is **paused** after step 6.3 and
+> resumes at 6.4 once the site is live. The portfolio site, its sign-in, demo requests and
+> invites are specified and built in the private `cferrante.dev` repo, not here. This section is
+> the contract between the two: how the concierge learns who a visitor is from the site, and how
+> it is switched on. It replaces Cognito (Phase 8) and the JWT parts of [§6](#6-tools-and-authorization).
+
+### 15.1 Who owns what
+
+| Concern | Owner |
+|---|---|
+| Pages, sign-in (magic link), sessions, invites, demo requests, email (SES), the invites database | `cferrante.dev` (private) |
+| Chat, retrieval, tools, evals, the concierge's Lambda and its own CloudFront distribution at `concierge.cferrante.dev` | this repo |
+| The signed hand-off token's format (15.3) | this section; both sides test against it |
+
+The concierge never reads the site's database or cookie. It trusts one thing from the site: a
+short-lived token signed with the site's private key, which it checks with the matching public
+key. The public key is not a secret, so this repo can stay public without any way to mint a
+token.
+
+### 15.2 Switching it on: `CONCIERGE_ACCESS`
+
+A [feature flag](concepts.md#feature-flag) as configuration, with no flag service. It separates
+*deploying* the concierge from *releasing* it: the code can be live while only I can use it.
+
+| `CONCIERGE_ACCESS` | Anonymous | Invitee | Owner |
+|---|---|---|---|
+| `owner` | sent to sign in | `403` | ✓ |
+| `invitee` | sent to sign in | ✓ | ✓ |
+| `public` | ✓ public documents and tools | ✓ invitee documents and tools | ✓ |
+
+- Missing or any other value stops startup ([fail closed](concepts.md#fail-closed)). `make dev`
+  sets `public`, with today's fixed caller.
+- "Sent to sign in" is a `302` to `/auth/start` for a page and `401` for an API call.
+- The site has its own switch, a Hugo parameter `features.concierge`, that shows or hides links
+  to the concierge. Both are removed once the concierge is public.
+
+### 15.3 Sign-in hand-off
+
+The site's session cookie is host-only on `cferrante.dev`, so `concierge.cferrante.dev` never
+sees it. A visitor who is signed in on the site gets a session on the concierge through a short
+redirect:
+
+```mermaid
+sequenceDiagram
+    participant B as Browser
+    participant C as concierge.cferrante.dev
+    participant S as cferrante.dev
+    B->>C: GET /auth/start?next=/chat
+    C->>B: 302 to S /api/handoff?app=concierge&state=…<br/>sets __Host-cc_state (state, next)
+    B->>S: GET /api/handoff (site session cookie)
+    Note over S: no session → sign in first, then back here
+    S->>B: 302 to C /auth/callback?token=…
+    B->>C: GET /auth/callback?token=… (+ __Host-cc_state)
+    Note over C: verify token, state, single use
+    C->>B: 302 to next, sets __Host-cc_session, clears state
+```
+
+**The token** is a fixed format, not a JWT, so there is no `alg` header to downgrade
+([algorithm confusion](concepts.md#algorithm-confusion)): `base64url(payload) "." base64url(signature)`,
+signed with **Ed25519** (Go's standard library). The payload is JSON with exactly these fields;
+unknown or missing fields are refused:
+
+| Field | Meaning |
+|---|---|
+| `v` | Format version, `1` |
+| `aud` | `"concierge"`: a token for another app is refused |
+| `sub` | The site's opaque user id, never the email |
+| `role` | `"owner"` or `"invitee"` |
+| `state` | Echo of the concierge's `state`: stops [login CSRF](concepts.md#login-csrf) |
+| `jti` | Random id; accepted once |
+| `iat`, `exp` | Issued and expiry, Unix seconds; `exp − iat` ≤ 60 s |
+
+**Rules on each side:**
+- The site sends the token only to the callback URL in **its own configuration** for that `app`,
+  never to a URL from the request, so a token can't be sent to an attacker.
+- `next` must be a path on the concierge (starts with `/`, not `//`), so the hand-off can't be
+  used as an [open redirect](concepts.md#open-redirect).
+- The concierge checks the signature, `v`, `aud`, `exp` (allowing 30 s of clock skew), that
+  `state` matches the `__Host-cc_state` cookie, and claims `jti` once: a conditional write with a
+  TTL in the [§9](#9-rate-limiting-dynamodb) DynamoDB table, in memory locally. A reused token is
+  refused.
+- The token sits in a URL for one redirect. The callback answers with `Referrer-Policy:
+  no-referrer` and redirects at once, and the token is useless after first use or 60 s.
+
+**The concierge's session:** cookie `__Host-cc_session` (`Secure`, `HttpOnly`, `SameSite=Lax`,
+`Path=/`, no `Domain`), holding `sub`, `role` and expiry, signed with HMAC-SHA256 using a key in
+SSM. It lasts **1 hour**. After that the concierge silently repeats the hand-off, so a site
+session revoked by `invite` stops working here within an hour. Sign-out clears it.
+
+**Keys:** the site's Ed25519 private key lives only in the site's SSM. The concierge reads the
+public key from `SITE_HANDOFF_PUBLIC_KEY` and its cookie key from SSM
+`/cferrante-dev/concierge/session-key` (existing prefix; see the deviations log, 2026-11-16).
+
+### 15.4 The `Authenticator`
+
+A `SessionCookie` implementation of [§6](#6-tools-and-authorization)'s `Authenticator` reads
+`__Host-cc_session` and returns `Caller{ID: sub, Groups}`: `owner` gets `{owner, invitee}`,
+`invitee` gets `{invitee}`, and no cookie or a bad one gives the anonymous caller. Everything
+after that is unchanged: the access mask, tool filtering and the executor's re-check.
+`CONCIERGE_ACCESS` is applied in middleware before the handler, from the same `Caller`.
+
+### 15.5 Tests (each written first and seen to fail)
+
+1. **Token:** a valid token verifies; each of these is refused with its own error: wrong key,
+   one flipped byte in payload or signature, `aud` ≠ `concierge`, expired, `exp − iat` > 60 s,
+   unknown field, missing field, `v` ≠ 1, unknown `role`.
+2. **Callback:** `state` not matching the cookie, no state cookie, and a second use of the same
+   `jti` are refused; success sets `__Host-cc_session` with exactly the attributes above and
+   clears `__Host-cc_state`.
+3. **`next`:** `https://evil.example`, `//evil.example` and `/\evil.example` all become `/`.
+4. **Session cookie:** a tampered or expired cookie gives the anonymous caller, never an error
+   page.
+5. **Access matrix:** one table-driven test over every cell of 15.2, for a page and an API call.
+6. **Config:** `CONCIERGE_ACCESS` missing, empty or `Public` (wrong case) stops startup.
+7. **Contract:** a shared test vector (fixed key, payload and expected token) committed in both
+   repos, so the site's signer and the concierge's verifier can't drift apart.
+
+### 15.6 What this changes in the plan
+
+- **Phase 7:** the concierge deploys to `concierge.cferrante.dev` with its own CloudFront
+  distribution; the site's distribution, `cferrante.dev` and the wildcard certificate belong to
+  the site repo.
+- **Phase 8:** 8.1–8.3 (Cognito pool, JWT verification, `invite` CLI) are replaced by the
+  hand-off and `SessionCookie` above; invites live in the site. 8.4 (invitee tools and confirm
+  UI) stays.
+- **[D2]:** SES, decided in the site repo, which owns the SES identity.
+- **Phase 9:** turn logging needs its own database; whether it shares the site's Neon project is
+  decided when Phase 9 starts.
