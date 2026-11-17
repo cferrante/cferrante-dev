@@ -874,14 +874,18 @@ sequenceDiagram
     C->>B: 302 to next, sets __Host-cc_session, clears state
 ```
 
-**The token** is a fixed format, not a JWT, so there is no `alg` header to downgrade
-([algorithm confusion](concepts.md#algorithm-confusion)): `base64url(payload) "." base64url(signature)`,
-signed with **Ed25519** (Go's standard library). The payload is JSON with exactly these fields;
-unknown or missing fields are refused:
+**The token** is a standard [JWT](concepts.md#jwt) signed with **Ed25519**, with the algorithm
+pinned by the verifier: the header must decode to exactly `{"alg":"EdDSA","kid":…,"typ":"JWT"}`.
+Any other `alg` (including `none`), an extra header field or an unknown `kid` is refused
+*before* the signature is checked, so the header can't choose how it is verified
+([algorithm confusion](concepts.md#algorithm-confusion)). Verification uses Go's standard library
+(`crypto/ed25519`, `encoding/base64`, `encoding/json`), not a JWT library: the format is three
+base64url parts, and pinning one algorithm leaves little to parse. The claims are JSON with
+exactly these fields; unknown or missing fields are refused:
 
-| Field | Meaning |
+| Claim | Meaning |
 |---|---|
-| `v` | Format version, `1` |
+| `iss` | `"https://cferrante.dev"` |
 | `aud` | `"concierge"`: a token for another app is refused |
 | `sub` | The site's opaque user id, never the email |
 | `role` | `"owner"` or `"invitee"` |
@@ -894,7 +898,7 @@ unknown or missing fields are refused:
   never to a URL from the request, so a token can't be sent to an attacker.
 - `next` must be a path on the concierge (starts with `/`, not `//`), so the hand-off can't be
   used as an [open redirect](concepts.md#open-redirect).
-- The concierge checks the signature, `v`, `aud`, `exp` (allowing 30 s of clock skew), that
+- The concierge checks the header, the signature, `iss`, `aud`, `exp` (allowing 30 s of clock skew), that
   `state` matches the `__Host-cc_state` cookie, and claims `jti` once: a conditional write with a
   TTL in the [§9](#9-rate-limiting-dynamodb) DynamoDB table, in memory locally. A reused token is
   refused.
@@ -906,9 +910,20 @@ unknown or missing fields are refused:
 SSM. It lasts **1 hour**. After that the concierge silently repeats the hand-off, so a site
 session revoked by `invite` stops working here within an hour. Sign-out clears it.
 
-**Keys:** the site's Ed25519 private key lives only in the site's SSM. The concierge reads the
-public key from `SITE_HANDOFF_PUBLIC_KEY` and its cookie key from SSM
-`/cferrante-dev/concierge/session-key` (existing prefix; see the deviations log, 2026-11-16).
+**Keys and rotation:** the site's Ed25519 private keys live only in the site's SSM, each with a
+key id (`kid`) that goes in the token header. The concierge reads its trusted public keys from
+`SITE_HANDOFF_PUBLIC_KEYS`, a JSON object of `kid` → base64 public key with one to three entries;
+public keys aren't secret, so this is plain configuration. Rotating the site's key logs nobody
+out:
+1. Add the new public key to `SITE_HANDOFF_PUBLIC_KEYS` and deploy the concierge.
+2. Switch the site's signer to the new `kid`.
+3. After 90 s (the 60 s token life plus skew), remove the old key and deploy again.
+
+If a private key leaks, step 3 happens at once: tokens signed with it stop working, while
+existing concierge sessions are unaffected because the concierge signs those with its own key.
+That cookie key is in SSM at `/cferrante-dev/concierge/session-key` (existing prefix; see the
+deviations log, 2026-11-16). Rotating it ends every concierge session, which costs each visitor
+one silent hand-off, so it needs no `kid`.
 
 ### 15.4 The `Authenticator`
 
@@ -920,19 +935,25 @@ after that is unchanged: the access mask, tool filtering and the executor's re-c
 
 ### 15.5 Tests (each written first and seen to fail)
 
-1. **Token:** a valid token verifies; each of these is refused with its own error: wrong key,
-   one flipped byte in payload or signature, `aud` ≠ `concierge`, expired, `exp − iat` > 60 s,
-   unknown field, missing field, `v` ≠ 1, unknown `role`.
-2. **Callback:** `state` not matching the cookie, no state cookie, and a second use of the same
+1. **Header:** each is refused before any signature check: `alg` of `none`, `HS256` or `RS256`;
+   a missing or unknown `kid`; an extra header field; a token that isn't three base64url parts.
+2. **Claims:** a valid token verifies; each of these is refused with its own error: wrong key,
+   one flipped byte in payload or signature, wrong `iss`, `aud` ≠ `concierge`, expired,
+   `exp − iat` > 60 s, unknown claim, missing claim, unknown `role`.
+3. **Callback:** `state` not matching the cookie, no state cookie, and a second use of the same
    `jti` are refused; success sets `__Host-cc_session` with exactly the attributes above and
    clears `__Host-cc_state`.
-3. **`next`:** `https://evil.example`, `//evil.example` and `/\evil.example` all become `/`.
-4. **Session cookie:** a tampered or expired cookie gives the anonymous caller, never an error
+4. **`next`:** `https://evil.example`, `//evil.example` and `/\evil.example` all become `/`.
+5. **Session cookie:** a tampered or expired cookie gives the anonymous caller, never an error
    page.
-5. **Access matrix:** one table-driven test over every cell of 15.2, for a page and an API call.
-6. **Config:** `CONCIERGE_ACCESS` missing, empty or `Public` (wrong case) stops startup.
-7. **Contract:** a shared test vector (fixed key, payload and expected token) committed in both
-   repos, so the site's signer and the concierge's verifier can't drift apart.
+6. **Access matrix:** one table-driven test over every cell of 15.2, for a page and an API call.
+7. **Config:** `CONCIERGE_ACCESS` missing, empty or `Public` (wrong case) stops startup, and so
+   do `SITE_HANDOFF_PUBLIC_KEYS` empty, with more than three keys, or with a key that isn't 32
+   bytes.
+8. **Rotation:** with two keys configured, tokens signed by either verify; once the old `kid` is
+   removed, its tokens are refused as an unknown `kid`.
+9. **Contract:** a shared test vector (fixed key and `kid`, claims and the expected token)
+   committed in both repos, so the site's signer and the concierge's verifier can't drift apart.
 
 ### 15.6 What this changes in the plan
 

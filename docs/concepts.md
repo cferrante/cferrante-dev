@@ -275,7 +275,8 @@ authentication (Cognito) and own authorization (Go code).
 
 **JSON Web Token.** A signed token the browser sends with each request, containing claims like
 user id and groups. The server checks the signature with the issuer's public keys: no database
-lookup, microseconds of work.
+lookup, microseconds of work. The header's `kid` (key id) says which of the issuer's keys
+signed it, so the issuer can rotate keys without invalidating tokens signed a moment earlier.
 
 ### Cognito groups
 
@@ -290,8 +291,8 @@ Signing in with a one-time code (OTP) sent by email instead of a password.
 
 An attack on token formats such as [JWT](#jwt) that name their own signing algorithm in a header.
 If the verifier trusts that header, an attacker can switch it, for example to `none` or to a
-symmetric algorithm keyed with the public key, and forge tokens. A format with one fixed
-algorithm, checked by the verifier, has no header to switch.
+symmetric algorithm keyed with the public key, and forge tokens. The fix is for the verifier to
+allow exactly one algorithm and refuse any token whose header asks for another.
 
 ### Login CSRF
 
