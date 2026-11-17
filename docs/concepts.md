@@ -275,7 +275,8 @@ authentication (Cognito) and own authorization (Go code).
 
 **JSON Web Token.** A signed token the browser sends with each request, containing claims like
 user id and groups. The server checks the signature with the issuer's public keys: no database
-lookup, microseconds of work.
+lookup, microseconds of work. The header's `kid` (key id) says which of the issuer's keys
+signed it, so the issuer can rotate keys without invalidating tokens signed a moment earlier.
 
 ### Cognito groups
 
@@ -285,6 +286,36 @@ what a caller may do.
 ### Passwordless sign-in
 
 Signing in with a one-time code (OTP) sent by email instead of a password.
+
+### Algorithm confusion
+
+An attack on token formats such as [JWT](#jwt) that name their own signing algorithm in a header.
+If the verifier trusts that header, an attacker can switch it, for example to `none` or to a
+symmetric algorithm keyed with the public key, and forge tokens. The fix is for the verifier to
+allow exactly one algorithm and refuse any token whose header asks for another.
+
+### Login CSRF
+
+Tricking a browser into signing in to the *attacker's* account, so what the victim then does is
+recorded there. A sign-in redirect prevents it by sending a random `state` value out, keeping it
+in a cookie, and accepting the answer only when it comes back unchanged.
+
+### Open redirect
+
+A link on a trusted site that forwards to any address given in the URL, which lets phishing
+links look like they belong to that site. Redirects should go only to paths on the same site or
+to addresses fixed in configuration.
+
+### Feature flag
+
+A switch that turns a feature on or off without changing code, here a configuration value. It
+separates deploying code from releasing it to people. Each flag is removed once its feature is
+fully released, so old switches don't pile up.
+
+### Fail closed
+
+When a check can't be made, for example because a setting is missing or unknown, deny rather
+than allow. A missing access setting stops the server instead of opening it to everyone.
 
 ### OIDC
 
